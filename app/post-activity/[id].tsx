@@ -127,30 +127,51 @@ export default function PostActivityScreen() {
       // Fetch detailed activity
       const [likesResponse, commentsResponse, bookmarksResponse] = await Promise.all([
         // Get users who liked this post
-        supabase.rpc('get_post_likers', { p_post_id: id }),
+        supabase.from('likes').select(`
+          user_id,
+          created_at,
+          profiles!likes_user_id_fkey (username, avatar_url)
+        `).eq('post_id', id),
 
         // Get comments on this post
-        supabase.rpc('get_post_comments', { p_post_id: id }),
+        supabase.from('comments').select(`
+          id,
+          content,
+          created_at,
+          parent_id,
+          replies_count,
+          likes_count,
+          profiles!comments_user_id_fkey (id, username, avatar_url)
+        `).eq('post_id', id).order('created_at', { ascending: true }),
 
         // Get users who bookmarked this post
-        supabase.rpc('get_post_bookmarkers', { p_post_id: id })
+        supabase.from('bookmarks').select(`
+          user_id,
+          created_at,
+          profiles!bookmarks_user_id_fkey (username, avatar_url)
+        `).eq('post_id', id)
       ]);
 
       const detailedActivity: DetailedActivity = {
-        likes: likesResponse.data?.map((like: any) => ({
+        likes: likesResponse.data?.map((like: any) => {
+          const profile = Array.isArray(like.profiles) ? like.profiles[0] : like.profiles;
+          return {
           id: like.user_id,
-          name: like.full_name || 'Deleted User',
-          avatar: like.avatar_url && like.avatar_url.trim() !== '' ? like.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
+          name: profile?.username || 'Deleted User',
+          avatar: profile?.avatar_url && profile?.avatar_url.trim() !== '' ? profile?.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
           created_at: like.created_at,
-        })) || [],
+          };
+        }) || [],
         
-        comments: commentsResponse.data?.map((comment: any) => ({
+        comments: commentsResponse.data?.map((comment: any) => {
+          const profile = Array.isArray(comment.profiles) ? comment.profiles[0] : comment.profiles;
+          return {
           id: comment.id,
           content: comment.content,
           user: {
-            id: comment.user_id,
-            name: comment.full_name || 'Deleted User',
-            avatar: comment.avatar_url && comment.avatar_url.trim() !== '' ? comment.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
+            id: profile?.id || comment.user_id,
+            name: profile?.username || 'Deleted User',
+            avatar: profile?.avatar_url && profile?.avatar_url.trim() !== '' ? profile?.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
             created_at: comment.created_at
           },
           created_at: comment.created_at,
@@ -158,14 +179,18 @@ export default function PostActivityScreen() {
           replies_count: comment.replies_count,
           likes_count: comment.likes_count,
           replies: []
-        })) || [],
+          };
+        }) || [],
         
-        bookmarks: bookmarksResponse.data?.map((bookmark: any) => ({
+        bookmarks: bookmarksResponse.data?.map((bookmark: any) => {
+          const profile = Array.isArray(bookmark.profiles) ? bookmark.profiles[0] : bookmark.profiles;
+          return {
           id: bookmark.user_id,
-          name: bookmark.full_name || 'Deleted User',
-          avatar: bookmark.avatar_url && bookmark.avatar_url.trim() !== '' ? bookmark.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
+          name: profile?.username || 'Deleted User',
+          avatar: profile?.avatar_url && profile?.avatar_url.trim() !== '' ? profile?.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
           created_at: bookmark.created_at,
-        })) || [],
+          };
+        }) || [],
         
         shares: [] // Shares functionality to be implemented
       };

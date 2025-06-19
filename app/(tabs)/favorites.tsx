@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +24,7 @@ export default function FavoritesScreen() {
   
   const [favoritePrompts, setFavoritePrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Redirect to auth if not logged in
@@ -33,7 +34,7 @@ export default function FavoritesScreen() {
     }
   }, [isLoggedIn]);
 
-  const fetchFavorites = async () => {
+  const fetchFavorites = useCallback(async (showRefreshing = false) => {
     if (!user?.id) {
       setError('User not authenticated');
       setLoading(false);
@@ -41,7 +42,11 @@ export default function FavoritesScreen() {
     }
 
     try {
-      setLoading(true);
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
       const { data, error: rpcError } = await supabase.rpc('get_bookmarked_posts', {
@@ -73,8 +78,168 @@ export default function FavoritesScreen() {
       setError(err instanceof Error ? err.message : 'Failed to fetch favorites');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [user?.id]);
+
+  // Set up real-time subscriptions
+  useEffect(() => {
+    if (user?.id && isLoggedIn) {
+      // Initial fetch
+      fetchFavorites();
+
+      // Set up real-time subscriptions
+      const bookmarksChannel = supabase
+        .channel(`favorites_bookmarks_${user.id}_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'bookmarks',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('Bookmarks change detected for favorites:', payload);
+            
+            // Add a small delay to ensure database consistency
+            setTimeout(() => {
+              if (payload.eventType === 'DELETE' && payload.old.user_id === user.id) {
+              // Remove the post from favorites immediately
+              setFavoritePrompts(prev => prev.filter(p => p.id !== payload.old.post_id));
+              } else if (payload.eventType === 'INSERT' && payload.new.user_id === user.id) {
+              // Refetch to get the new bookmarked post
+              fetchFavorites();
+              }
+            }, 100);
+          }
+        )
+        .subscribe();
+
+      const likesChannel = supabase
+        .channel(`favorites_likes_${user.id}_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'likes'
+          },
+          (payload) => {
+            console.log('Likes change detected for favorites:', payload);
+            
+            setTimeout(() => {
+              if (payload.eventType === 'INSERT' && payload.new.post_id) {
+              setFavoritePrompts(prev => prev.map(prompt => {
+                if (prompt.id === payload.new.post_id) {
+                  return {
+                    ...prompt,
+                    likes: prompt.likes + 1,
+                    isLiked: payload.new.user_id === user?.id ? true : prompt.isLiked
+                  };
+                }
+                return prompt;
+              }));
+              } else if (payload.eventType === 'DELETE' && payload.old.post_id) {
+              setFavoritePrompts(prev => prev.map(prompt => {
+                if (prompt.id === payload.old.post_id) {
+                  return {
+                    ...prompt,
+                    likes: Math.max(prompt.likes - 1, 0),
+                    isLiked: payload.old.user_id === user?.id ? false : prompt.isLiked
+                  };
+                }
+                return prompt;
+              }));
+              }
+            }, 100);
+          }
+        )
+        .subscribe();
+
+      const commentsChannel = supabase
+        .channel(`favorites_comments_${user.id}_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'comments'
+          },
+          (payload) => {
+            console.log('Comments change detected for favorites:', payload);
+            
+            setTimeout(() => {
+              if (payload.eventType === 'INSERT' && payload.new.post_id) {
+              setFavoritePrompts(prev => prev.map(prompt => {
+                if (prompt.id === payload.new.post_id) {
+                  return {
+                    ...prompt,
+                    comments: prompt.comments + 1
+                  };
+                }
+                return prompt;
+              }));
+              } else if (payload.eventType === 'DELETE' && payload.old.post_id) {
+              setFavoritePrompts(prev => prev.map(prompt => {
+                if (prompt.id === payload.old.post_id) {
+                  return {
+                    ...prompt,
+                    comments: Math.max(prompt.comments - 1, 0)
+                  };
+                }
+                return prompt;
+              }));
+              }
+            }, 100);
+          }
+        )
+        .subscribe();
+
+      const postsChannel = supabase
+        .channel(`favorites_posts_${user.id}_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'posts'
+          },
+          (payload) => {
+            console.log('Posts change detected for favorites:', payload);
+            
+            setTimeout(() => {
+              if (payload.new) {
+              setFavoritePrompts(prev => prev.map(prompt => {
+                if (prompt.id === payload.new.id) {
+                  return {
+                    ...prompt,
+                    prompt: payload.new.prompt,
+                    category: payload.new.category,
+                    tags: payload.new.tags,
+                    images: payload.new.images,
+                    likes: payload.new.likes_count || 0,
+                    comments: payload.new.comments_count || 0,
+                    shares: payload.new.shares_count || 0
+                  };
+                }
+                return prompt;
+              }));
+              }
+            }, 100);
+          }
+        )
+        .subscribe();
+
+      // Cleanup subscriptions on unmount
+      return () => {
+        supabase.removeChannel(bookmarksChannel);
+        supabase.removeChannel(likesChannel);
+        supabase.removeChannel(commentsChannel);
+        supabase.removeChannel(postsChannel);
+      };
+    }
+  }, [user?.id, isLoggedIn, fetchFavorites]);
 
   const handleLike = async (promptId: string) => {
     if (!user?.id) {
@@ -106,17 +271,8 @@ export default function FavoritesScreen() {
 
         if (error) throw error;
       }
-
-      // Update local state
-      setFavoritePrompts(prev => prev.map(p => 
-        p.id === promptId 
-          ? { 
-              ...p, 
-              isLiked: !p.isLiked,
-              likes: p.isLiked ? p.likes - 1 : p.likes + 1
-            }
-          : p
-      ));
+      
+      // Let real-time handle the update
     } catch (err) {
       console.error('Error toggling like:', err);
     }
@@ -129,6 +285,9 @@ export default function FavoritesScreen() {
     }
 
     try {
+      // Optimistically remove from favorites immediately
+      setFavoritePrompts(prev => prev.filter(p => p.id !== promptId));
+      
       // Remove bookmark (since this is favorites screen, we're removing from favorites)
       const { error } = await supabase
         .from('bookmarks')
@@ -137,11 +296,10 @@ export default function FavoritesScreen() {
         .eq('post_id', promptId);
 
       if (error) throw error;
-
-      // Remove from local state
-      setFavoritePrompts(prev => prev.filter(p => p.id !== promptId));
     } catch (err) {
       console.error('Error removing bookmark:', err);
+      // Revert optimistic update on error
+      fetchFavorites();
     }
   };
 
@@ -150,11 +308,9 @@ export default function FavoritesScreen() {
     console.log('Share prompt:', promptId);
   };
 
-  useEffect(() => {
-    if (user?.id && isLoggedIn) {
-      fetchFavorites();
-    }
-  }, [user?.id, isLoggedIn]);
+  const onRefresh = () => {
+    fetchFavorites(true);
+  };
 
   if (!isLoggedIn) {
     return null; // or loading spinner
@@ -282,9 +438,24 @@ export default function FavoritesScreen() {
       textAlign: 'center',
       lineHeight: 22,
     },
+    realtimeIndicator: {
+      position: 'absolute',
+      top: Platform.OS === 'android' ? insets.top + 60 : insets.top + 64,
+      right: 20,
+      backgroundColor: colors.success,
+      borderRadius: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      opacity: 0.8,
+    },
+    realtimeText: {
+      fontSize: 10,
+      fontFamily: 'Inter-Medium',
+      color: colors.white,
+    },
   });
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -316,7 +487,7 @@ export default function FavoritesScreen() {
           <Text style={styles.errorDescription}>
             Please check your connection and try again.
           </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchFavorites}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchFavorites()}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -350,6 +521,14 @@ export default function FavoritesScreen() {
               style={styles.scrollView}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  colors={[colors.primary]}
+                  tintColor={colors.primary}
+                />
+              }
             >
               {favoritePrompts.map((prompt) => (
                 <PromptCard 

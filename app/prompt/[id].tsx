@@ -31,11 +31,13 @@ export default function PromptDetailScreen() {
   const insets = useSafeAreaInsets();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [newComment, setNewComment] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAvatarLoading, setIsAvatarLoading] = useState(true);
+  const [showReplies, setShowReplies] = useState<{ [key: string]: boolean }>({});
   
   const { comments, loading: commentsLoading, addComment, toggleCommentLike } = useComments(id as string);
 
@@ -109,38 +111,69 @@ export default function PromptDetailScreen() {
   const handleLike = async () => {
     if (!user || !prompt) return;
     try {
+      // Store original state for potential rollback
+      const originalLikedState = prompt.isLiked;
+      const originalLikesCount = prompt.likes;
       const newLikedState = !prompt.isLiked;
       const newLikesCount = newLikedState ? prompt.likes + 1 : prompt.likes - 1;
 
+      // Optimistic update
       setPrompt(p => p ? { ...p, isLiked: newLikedState, likes: newLikesCount } : null);
 
       if (newLikedState) {
-        await supabase.from('likes').insert({ user_id: user.id, post_id: prompt.id });
+        const { error } = await supabase.from('likes').insert({ user_id: user.id, post_id: prompt.id });
+        if (error) {
+          // Revert optimistic update on error
+          setPrompt(p => p ? { ...p, isLiked: originalLikedState, likes: originalLikesCount } : null);
+          throw error;
+        }
       } else {
-        await supabase.from('likes').delete().eq('user_id', user.id).eq('post_id', prompt.id);
+        const { error } = await supabase.from('likes').delete().eq('user_id', user.id).eq('post_id', prompt.id);
+        if (error) {
+          // Revert optimistic update on error
+          setPrompt(p => p ? { ...p, isLiked: originalLikedState, likes: originalLikesCount } : null);
+          throw error;
+        }
       }
     } catch (err) {
       console.error('Error toggling like:', err);
-      // Revert UI on error
-      fetchPrompt();
     }
   };
 
   const handleBookmark = async () => {
     if (!user || !prompt) return;
     try {
+      // Store original state for potential rollback
+      const originalBookmarkedState = prompt.isBookmarked;
       const newBookmarkedState = !prompt.isBookmarked;
+      
+      // Optimistic update
       setPrompt(p => p ? { ...p, isBookmarked: newBookmarkedState } : null);
 
       if (newBookmarkedState) {
-        await supabase.from('bookmarks').insert({ user_id: user.id, post_id: prompt.id });
+        const { error } = await supabase.from('bookmarks').insert({ user_id: user.id, post_id: prompt.id });
+        if (error && error.code === '23505') {
+          // Bookmark already exists - this is fine, the optimistic update was correct
+          // No need to revert the UI state
+          console.log('Bookmark already exists, ignoring duplicate error');
+        } else if (error) {
+          // For any other error, revert the optimistic update
+          console.error('Error creating bookmark:', error);
+          // Revert optimistic update on error
+          setPrompt(p => p ? { ...p, isBookmarked: originalBookmarkedState } : null);
+          throw error;
+        }
       } else {
-        await supabase.from('bookmarks').delete().eq('user_id', user.id).eq('post_id', prompt.id);
+        const { error } = await supabase.from('bookmarks').delete().eq('user_id', user.id).eq('post_id', prompt.id);
+        if (error) {
+          console.error('Error deleting bookmark:', error);
+          // Revert optimistic update on error
+          setPrompt(p => p ? { ...p, isBookmarked: originalBookmarkedState } : null);
+          throw error;
+        }
       }
     } catch (err) {
       console.error('Error toggling bookmark:', err);
-      // Revert UI on error
-      fetchPrompt();
     }
   };
 
@@ -157,13 +190,14 @@ export default function PromptDetailScreen() {
       return;
     }
 
-    if (newComment.trim() === '') return;
+    if (newComment.trim() === '' || isSubmittingComment) return;
 
+    setIsSubmittingComment(true);
     try {
       await addComment(newComment);
       setNewComment('');
       
-      // Update prompt comment count
+      // Update comment count optimistically
       setPrompt(prev => prev ? {
         ...prev,
         comments: prev.comments + 1
@@ -171,6 +205,8 @@ export default function PromptDetailScreen() {
     } catch (err) {
       console.error('Error posting comment:', err);
       Alert.alert('Error', 'Failed to post comment. Please try again.');
+    } finally {
+      setIsSubmittingComment(false);
     }
   };
 
@@ -190,7 +226,7 @@ export default function PromptDetailScreen() {
     try {
       await addComment(content, commentId);
       
-      // Update prompt comment count
+      // Update comment count optimistically
       setPrompt(prev => prev ? {
         ...prev,
         comments: prev.comments + 1
@@ -200,6 +236,7 @@ export default function PromptDetailScreen() {
       Alert.alert('Error', 'Failed to post reply. Please try again.');
     }
   };
+
   const handleCommentLike = async (commentId: string) => {
     if (!isLoggedIn) {
       Alert.alert(
@@ -218,6 +255,13 @@ export default function PromptDetailScreen() {
     } catch (err) {
       console.error('Error liking comment:', err);
     }
+  };
+
+  const toggleReplies = (commentId: string) => {
+    setShowReplies(prev => ({
+      ...prev,
+      [commentId]: !prev[commentId]
+    }));
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -515,6 +559,7 @@ export default function PromptDetailScreen() {
       borderRadius: 16,
       padding: 6,
       marginLeft: 6,
+      opacity: isSubmittingComment ? 0.6 : 1,
     },
     sendButtonDisabled: {
       backgroundColor: colors.surfaceVariant,
@@ -598,14 +643,20 @@ export default function PromptDetailScreen() {
     );
   }
 
+  // Group comments by parent_id for nested display
+  const topLevelComments = comments.filter(comment => !comment.parent_id);
+  const getReplies = (parentId: string) => comments.filter(comment => comment.parent_id === parentId);
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color={colors.text} />
+          <ArrowLeft size={18} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Prompt Details</Text>
+        <Text style={styles.headerTitle}>
+        Prompt Details
+        </Text>
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -749,18 +800,19 @@ export default function PromptDetailScreen() {
                     onChangeText={setNewComment}
                     multiline
                     textAlignVertical="top"
+                    editable={!isSubmittingComment}
                   />
                   <TouchableOpacity 
                     style={[
                       styles.sendButton,
-                      newComment.trim() === '' && styles.sendButtonDisabled
+                      (newComment.trim() === '' || isSubmittingComment) && styles.sendButtonDisabled
                     ]}
                     onPress={handlePostComment}
-                    disabled={newComment.trim() === ''}
+                    disabled={newComment.trim() === '' || isSubmittingComment}
                   >
                     <Send 
                       size={14} 
-                      color={newComment.trim() === '' ? colors.textSecondary : colors.white} 
+                      color={(newComment.trim() === '' || isSubmittingComment) ? colors.textSecondary : colors.white} 
                     />
                   </TouchableOpacity>
                 </View>
@@ -785,33 +837,23 @@ export default function PromptDetailScreen() {
                 <View style={{ paddingVertical: 20, alignItems: 'center' }}>
                   <ActivityIndicator size="small" color={colors.primary} />
                 </View>
-              ) : comments.length > 0 ? (
-                comments
-                  .filter(comment => !comment.parent_id) // Only show top-level comments
-                  .map((comment) => (
-                    <View key={comment.id}>
-                      <CommentCard 
-                        comment={comment}
-                        onLike={handleCommentLike}
-                        onReply={handleReplyToComment}
-                        depth={0}
-                        maxDepth={2}
-                      />
-                      {/* Render replies */}
-                      {comments
-                        .filter(reply => reply.parent_id === comment.id)
-                        .map((reply) => (
-                          <CommentCard 
-                            key={reply.id}
-                            comment={reply}
-                            onLike={handleCommentLike}
-                            onReply={handleReplyToComment}
-                            depth={1}
-                            maxDepth={2}
-                          />
-                        ))}
-                    </View>
-                  ))
+              ) : topLevelComments.length > 0 ? (
+                topLevelComments.map((comment) => {
+                  const replies = getReplies(comment.id);
+                  return (
+                    <CommentCard 
+                      key={comment.id}
+                      comment={comment}
+                      onLike={handleCommentLike}
+                      onReply={handleReplyToComment}
+                      depth={0}
+                      maxDepth={2}
+                      replies={replies}
+                      showReplies={showReplies[comment.id]}
+                      onToggleReplies={() => toggleReplies(comment.id)}
+                    />
+                  );
+                })
               ) : (
                 <Text style={styles.noComments}>
                   No comments yet. Be the first to share your thoughts!

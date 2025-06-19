@@ -21,6 +21,7 @@ import { router } from 'expo-router';
 import { ArrowLeft, Sparkles, Brain, Zap, Image as ImageIcon, Tag, Send, Loader, CircleCheck as CheckCircle, X, Upload, Camera, Plus, CircleAlert as AlertCircle } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 
@@ -57,12 +58,17 @@ export default function CreatePostScreen() {
   const { colors } = useTheme();
   const { user, isLoggedIn } = useAuth();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams();
 
   // Form state
-  const [prompt, setPrompt] = useState('');
-  const [selectedAiSource, setSelectedAiSource] = useState<'chatgpt' | 'gemini' | 'grok'>('chatgpt');
-  const [selectedCategory, setSelectedCategory] = useState('Art & Design');
-  const [tags, setTags] = useState<string[]>([]);
+  const [prompt, setPrompt] = useState(params.prefilledPrompt as string || '');
+  const [selectedAiSource, setSelectedAiSource] = useState<'chatgpt' | 'gemini' | 'grok'>(
+    (params.prefilledAiSource as 'chatgpt' | 'gemini' | 'grok') || 'chatgpt'
+  );
+  const [selectedCategory, setSelectedCategory] = useState(params.prefilledCategory as string || 'Art & Design');
+  const [tags, setTags] = useState<string[]>(
+    params.prefilledTags ? JSON.parse(params.prefilledTags as string) : []
+  );
   const [tagInput, setTagInput] = useState('');
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);

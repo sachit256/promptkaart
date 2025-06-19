@@ -23,6 +23,14 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
   const handleAuth = async () => {
     if (loading) return;
     setErrors({});
@@ -374,7 +382,7 @@ export default function AuthScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <ArrowLeft size={18} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>

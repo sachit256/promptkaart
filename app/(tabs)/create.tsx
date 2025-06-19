@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Platform, Scrol
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, Image, Type, Sparkles } from 'lucide-react-native';
+import { Plus, Image, Type, Sparkles, Bot, Lightbulb } from 'lucide-react-native';
 import { router } from 'expo-router';
 
 export default function CreateScreen() {
@@ -18,6 +18,22 @@ export default function CreateScreen() {
     } else {
       // Navigate to create post screen
       router.push('/create-post');
+    }
+  };
+
+  const handleAIAssistant = () => {
+    if (!isLoggedIn) {
+      router.push('/auth');
+    } else {
+      router.push('/ai-assistant');
+    }
+  };
+
+  const handleSmartSuggestions = () => {
+    if (!isLoggedIn) {
+      router.push('/auth');
+    } else {
+      router.push('/smart-suggestions');
     }
   };
 
@@ -150,6 +166,32 @@ export default function CreateScreen() {
                 <Text style={styles.optionButtonText}>Create Your Prompt</Text>
               </TouchableOpacity>
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.optionCard} onPress={handleAIAssistant}>
+              <View style={styles.optionHeader}>
+                <Bot size={24} color={colors.secondary} style={styles.optionIcon} />
+                <Text style={styles.optionTitle}>AI Assistant</Text>
+              </View>
+              <Text style={styles.optionDescription}>
+                Get help from AI to generate, improve, and optimize your prompts for better results.
+              </Text>
+              <TouchableOpacity style={[styles.optionButton, { backgroundColor: colors.secondary }]} onPress={handleAIAssistant}>
+                <Text style={styles.optionButtonText}>Chat with AI</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.optionCard} onPress={handleSmartSuggestions}>
+              <View style={styles.optionHeader}>
+                <Lightbulb size={24} color={colors.accent} style={styles.optionIcon} />
+                <Text style={styles.optionTitle}>Smart Suggestions</Text>
+              </View>
+              <Text style={styles.optionDescription}>
+                Discover trending prompts, personalized recommendations, and creative inspiration.
+              </Text>
+              <TouchableOpacity style={[styles.optionButton, { backgroundColor: colors.accent }]} onPress={handleSmartSuggestions}>
+                <Text style={styles.optionButtonText}>Browse Suggestions</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.featuredSection}>
@@ -157,16 +199,16 @@ export default function CreateScreen() {
             <View style={styles.featureCard}>
               <View style={styles.featureText}>
                 <Text style={styles.featureTitle}>
-                  {isLoggedIn ? 'Start creating amazing prompts' : 'Sign in to create prompts'}
+                  {isLoggedIn ? 'AI-powered creativity awaits' : 'Sign in to unlock AI features'}
                 </Text>
                 <Text style={styles.featureDescription}>
                   {isLoggedIn 
-                    ? 'Share your creative ideas and inspire others in the community.'
-                    : 'Login or create an account to start sharing your creative prompts with the community.'
+                    ? 'Use our AI assistant and smart suggestions to create better prompts faster.'
+                    : 'Login to access AI assistance, smart suggestions, and create amazing prompts.'
                   }
                 </Text>
               </View>
-              <Plus size={24} color={colors.primary} />
+              <Sparkles size={24} color={colors.primary} />
             </View>
           </View>
         </ScrollView>

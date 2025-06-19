@@ -43,6 +43,8 @@ export default function RootLayout() {
             <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="avatar-gallery" options={{ headerShown: false }} />
             <Stack.Screen name="create-post" options={{ headerShown: false }} />
+            <Stack.Screen name="ai-assistant" options={{ headerShown: false }} />
+            <Stack.Screen name="smart-suggestions" options={{ headerShown: false }} />
             <Stack.Screen name="+not-found" />
           </Stack>
           <StatusBar 

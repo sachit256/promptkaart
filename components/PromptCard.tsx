@@ -1,6 +1,26 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions, ScrollView, Alert } from 'react-native';
-import { Heart, MessageCircle, Share, ChevronLeft, ChevronRight, Bookmark, ChevronDown, ChevronUp, CreditCard as Edit, ChartBar as BarChart3 } from 'lucide-react-native';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import {
+  Heart,
+  MessageCircle,
+  Share,
+  ChevronLeft,
+  ChevronRight,
+  Bookmark,
+  ChevronDown,
+  ChevronUp,
+  CreditCard as Edit,
+  ChartBar as BarChart3,
+} from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Prompt } from '@/types/prompt';
@@ -19,28 +39,33 @@ interface PromptCardProps {
   bookmarkCount?: number;
 }
 
-export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount }: PromptCardProps) {
+export function PromptCard({
+  prompt,
+  onLike,
+  onShare,
+  onBookmark,
+  bookmarkCount,
+}: PromptCardProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isLiked, setIsLiked] = useState(prompt.isLiked);
-  const [isBookmarked, setIsBookmarked] = useState(prompt.isBookmarked);
-  const [likesCount, setLikesCount] = useState(prompt.likes);
   const [isAvatarLoading, setIsAvatarLoading] = useState(true);
 
   const CHAR_LIMIT = 150;
   const shouldShowReadMore = prompt.prompt.length > CHAR_LIMIT;
-  const displayText = isExpanded ? prompt.prompt : prompt.prompt.substring(0, CHAR_LIMIT);
+  const displayText = isExpanded
+    ? prompt.prompt
+    : prompt.prompt.substring(0, CHAR_LIMIT);
 
   const handleNextImage = () => {
-    setCurrentImageIndex((prev) => 
+    setCurrentImageIndex((prev) =>
       prev === prompt.images.length - 1 ? 0 : prev + 1
     );
   };
 
   const handlePrevImage = () => {
-    setCurrentImageIndex((prev) => 
+    setCurrentImageIndex((prev) =>
       prev === 0 ? prompt.images.length - 1 : prev - 1
     );
   };
@@ -53,12 +78,12 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
     e.stopPropagation(); // Prevent card press when tapping edit
     router.push(`/edit-post/${prompt.id}`);
   };
-  
+
   const handleViewActivity = (e: any) => {
     e.stopPropagation(); // Prevent card press when tapping activity
     router.push(`/post-activity/${prompt.id}`);
   };
-  
+
   const toggleReadMore = (e: any) => {
     e.stopPropagation(); // Prevent card press when tapping read more
     setIsExpanded(!isExpanded);
@@ -72,22 +97,22 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
     }
   };
 
-  const handleLikePress = () => {
+  const handleLikePress = (e: any) => {
+    e.stopPropagation(); // Prevent card press when tapping like
     handleAuthAction(() => {
       onLike?.(prompt.id);
-      setIsLiked(!isLiked);
-      setLikesCount(prev => (isLiked ? prev - 1 : prev + 1));
     });
   };
 
-  const handleBookmarkPress = () => {
+  const handleBookmarkPress = (e: any) => {
+    e.stopPropagation(); // Prevent card press when tapping bookmark
     handleAuthAction(() => {
       onBookmark?.(prompt.id);
-      setIsBookmarked(!isBookmarked);
     });
   };
 
-  const handleSharePress = () => {
+  const handleSharePress = (e: any) => {
+    e.stopPropagation(); // Prevent card press when tapping share
     onShare?.(prompt.id);
   };
 
@@ -239,26 +264,55 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
     actions: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderLight,
+      paddingTop: 8,
+      justifyContent: 'space-between',
+      paddingHorizontal: 4,
     },
     actionButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginRight: 24,
+      paddingVertical: 4,
+      borderRadius: 12,
+      marginRight: 15,
+      backgroundColor: 'transparent',
+      minWidth: 44,
+      justifyContent: 'flex-start',
+    },
+    leftActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    actionButtonBookmark: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 12,
+      backgroundColor: 'transparent',
+      minWidth: 44,
+      justifyContent: 'center',
+    },
+    actionButtonActive: {
+      backgroundColor: colors.surfaceVariant,
     },
     actionText: {
-      fontSize: 14,
+      fontSize: 11,
       fontFamily: 'Inter-Medium',
       color: colors.textSecondary,
-      marginLeft: 6,
+      marginLeft: 3,
     },
     likedText: {
       color: colors.error,
     },
+    likedButton: {
+      backgroundColor: colors.surfaceVariant,
+    },
     bookmarkedText: {
       color: colors.primary,
+    },
+    bookmarkedButton: {
+      backgroundColor: colors.surfaceVariant,
     },
     authorSection: {
       flexDirection: 'row',
@@ -276,7 +330,7 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
 
   // Use provided bookmark count or default to 0
   const displayBookmarkCount = bookmarkCount || 0;
-  
+
   // Check if current user owns this prompt
   const isOwner = user?.id === prompt.author.id;
 
@@ -285,43 +339,49 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
       <View style={styles.card}>
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.authorSection}>
-            <View style={styles.avatarContainer}>
-              {isAvatarLoading && <View style={[styles.avatar, styles.avatarPlaceholder]} />}
-              <Image
-                source={{ uri: prompt.author.avatar }}
-                style={[styles.avatar, isAvatarLoading && { position: 'absolute' }]}
-                onLoad={() => setIsAvatarLoading(false)}
-              />
-            </View>
-            <View style={styles.authorInfo}>
-              <Text style={styles.authorName}>{prompt.author.name}</Text>
-              <Text style={styles.category}>{prompt.category}</Text>
-            </View>
-            {isOwner && (
-              <View style={styles.headerActions}>
-                <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-                  <Edit size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.editButton} onPress={handleViewActivity}>
-                  <BarChart3 size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+          <View style={styles.avatarContainer}>
+            {isAvatarLoading && (
+              <View style={[styles.avatar, styles.avatarPlaceholder]} />
             )}
+            <Image
+              source={{ uri: prompt.author.avatar }}
+              style={[
+                styles.avatar,
+                isAvatarLoading && { position: 'absolute' },
+              ]}
+              onLoad={() => setIsAvatarLoading(false)}
+            />
           </View>
+          <View style={styles.authorInfo}>
+            <Text style={styles.authorName}>{prompt.author.name}</Text>
+            <Text style={styles.category}>{prompt.category}</Text>
+          </View>
+          {isOwner && (
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
+                <Edit size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={handleViewActivity}
+              >
+                <BarChart3 size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Images Carousel */}
         <View style={styles.imageContainer}>
-          <Image 
-            source={{ uri: prompt.images[currentImageIndex] }} 
+          <Image
+            source={{ uri: prompt.images[currentImageIndex] }}
             style={styles.image}
             resizeMode="cover"
           />
-          
+
           {prompt.images.length > 1 && (
             <>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.imageNavigation, styles.navLeft]}
                 onPress={handlePrevImage}
               >
@@ -329,26 +389,23 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
                   <ChevronLeft size={20} color="white" />
                 </View>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.imageNavigation, styles.navRight]}
                 onPress={handleNextImage}
               >
                 <View style={styles.navButton}>
                   <ChevronRight size={20} color="white" />
                 </View>
-                <Text style={[styles.actionText, prompt.isBookmarked && styles.bookmarkedText]}>
-                  {displayBookmarkCount}
-                </Text>
               </TouchableOpacity>
 
               <View style={styles.imageIndicators}>
                 {prompt.images.map((_, index) => (
-                  <View 
+                  <View
                     key={index}
                     style={[
                       styles.indicator,
-                      index === currentImageIndex && styles.activeIndicator
+                      index === currentImageIndex && styles.activeIndicator,
                     ]}
                   />
                 ))}
@@ -366,7 +423,10 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
                 {displayText}
                 {!isExpanded && shouldShowReadMore && '... '}
                 {shouldShowReadMore && (
-                  <TouchableOpacity style={styles.readMoreButton} onPress={toggleReadMore}>
+                  <TouchableOpacity
+                    style={styles.readMoreButton}
+                    onPress={toggleReadMore}
+                  >
                     <Text style={styles.readMoreText}>
                       {isExpanded ? 'less' : 'more'}
                     </Text>
@@ -380,7 +440,7 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
               </Text>
             </View>
           </View>
-          
+
           <View style={styles.tagsContainer}>
             {prompt.tags.slice(0, 3).map((tag, index) => (
               <View key={index} style={styles.tag}>
@@ -391,42 +451,47 @@ export function PromptCard({ prompt, onLike, onShare, onBookmark, bookmarkCount 
 
           {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={handleLikePress}
-            >
-              <Heart 
-                size={20} 
-                color={isLiked ? colors.error : colors.textSecondary}
-                fill={isLiked ? colors.error : 'none'}
-              />
-              <Text style={[styles.actionText, isLiked && styles.likedText]}>
-                {likesCount}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.leftActions}>
+              <TouchableOpacity
+                style={[styles.actionButton, prompt.isLiked && styles.likedButton]}
+                onPress={handleLikePress}
+              >
+                <Heart
+                  size={16}
+                  color={prompt.isLiked ? colors.error : colors.textSecondary}
+                  fill={prompt.isLiked ? colors.error : 'none'}
+                />
+                <Text style={[styles.actionText, prompt.isLiked && styles.likedText]}>
+                  {prompt.likes}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
-              <MessageCircle size={20} color={colors.textSecondary} />
-              <Text style={styles.actionText}>{prompt.comments}</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton}>
+                <MessageCircle size={16} color={colors.textSecondary} />
+                <Text style={styles.actionText}>{prompt.comments}</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.actionButton}
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleSharePress}
+              >
+                <Share size={16} color={colors.textSecondary} />
+                <Text style={styles.actionText}>{prompt.shares}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.actionButtonBookmark,
+                prompt.isBookmarked && styles.bookmarkedButton,
+              ]}
               onPress={handleBookmarkPress}
             >
-              <Bookmark 
-                size={20} 
-                color={isBookmarked ? colors.primary : colors.textSecondary}
-                fill={isBookmarked ? colors.primary : 'none'}
+              <Bookmark
+                size={16}
+                color={prompt.isBookmarked ? colors.primary : colors.textSecondary}
+                fill={prompt.isBookmarked ? colors.primary : 'none'}
               />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={handleSharePress}
-            >
-              <Share size={20} color={colors.textSecondary} />
-              <Text style={styles.actionText}>{prompt.shares}</Text>
             </TouchableOpacity>
           </View>
         </View>

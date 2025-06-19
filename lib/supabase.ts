@@ -4,9 +4,9 @@ import { Database } from '@/types/database';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
-if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'your_supabase_project_url' || supabaseAnonKey === 'your_supabase_anon_key') {
-  console.error('Missing or invalid Supabase environment variables. Please check your .env file and ensure you have set your actual Supabase project URL and anon key.');
-  throw new Error('Missing or invalid Supabase environment variables. Please check your .env file.');
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables. Please check your .env file and ensure you have set your Supabase project URL and anon key.');
+  throw new Error('Missing Supabase environment variables. Please check your .env file.');
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {

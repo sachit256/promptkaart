@@ -192,6 +192,10 @@ export function usePrompts() {
       const prompt = prompts.find(p => p.id === promptId);
       if (!prompt) return;
 
+      // Store original state for rollback
+      const originalIsBookmarked = prompt.isBookmarked;
+      const originalBookmarkCount = bookmarkCounts[promptId] || 0;
+
       if (prompt.isBookmarked) {
         // Remove bookmark
         const { error } = await supabase
@@ -200,7 +204,10 @@ export function usePrompts() {
           .eq('user_id', user.id)
           .eq('post_id', promptId);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error removing bookmark:', error);
+          throw error;
+        }
       } else {
         // Add bookmark
         const { error } = await supabase
@@ -210,7 +217,10 @@ export function usePrompts() {
             post_id: promptId
           });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error adding bookmark:', error);
+          throw error;
+        }
       }
 
       // Update local state
@@ -228,6 +238,18 @@ export function usePrompts() {
           : (prev[promptId] || 0) + 1
       }));
     } catch (err) {
+      // Rollback local state on error
+      setPrompts(prev => prev.map(p => 
+        p.id === promptId 
+          ? { ...p, isBookmarked: originalIsBookmarked }
+          : p
+      ));
+
+      setBookmarkCounts(prev => ({
+        ...prev,
+        [promptId]: originalBookmarkCount
+      }));
+
       console.error('Error toggling bookmark:', err);
       throw err;
     }

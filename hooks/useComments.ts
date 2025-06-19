@@ -65,22 +65,56 @@ export function useComments(postId: string) {
   const addComment = async (content: string, parentId: string | null = null) => {
     if (!user) throw new Error('User must be logged in to comment');
 
-    const { data, error } = await supabase
-      .from('comments')
-      .insert({
-        content,
-        post_id: postId,
-        user_id: user.id,
-        parent_id: parentId,
-      })
-      .select()
-      .single();
+    // Create optimistic comment
+    const optimisticComment: Comment = {
+      id: `temp-${Date.now()}`, // Temporary ID
+      content,
+      parent_id: parentId,
+      likes: 0,
+      isLiked: false,
+      createdAt: new Date().toISOString(),
+      author: {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar,
+      },
+    };
 
-    if (error) throw error;
-    if (!data) throw new Error('Failed to create comment');
-    
-    // Optimistically update UI or refetch
-    fetchComments();
+    // Optimistically add comment to UI
+    setComments(prev => [optimisticComment, ...prev]);
+
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .insert({
+          content,
+          post_id: postId,
+          user_id: user.id,
+          parent_id: parentId,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (!data) throw new Error('Failed to create comment');
+      
+      // Replace optimistic comment with real comment
+      setComments(prev => 
+        prev.map(comment => 
+          comment.id === optimisticComment.id 
+            ? {
+                ...optimisticComment,
+                id: data.id,
+                createdAt: data.created_at,
+              }
+            : comment
+        )
+      );
+    } catch (err) {
+      // Remove optimistic comment on error
+      setComments(prev => prev.filter(comment => comment.id !== optimisticComment.id));
+      throw err;
+    }
   };
 
   const toggleCommentLike = async (commentId: string) => {

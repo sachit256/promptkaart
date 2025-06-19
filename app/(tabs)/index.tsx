@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, RefreshControl, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { Bell } from 'lucide-react-native';
 import { PromptCard } from '@/components/PromptCard';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -15,11 +16,16 @@ export default function HomeScreen() {
   
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async (showRefreshing = false) => {
     try {
-      setLoading(true);
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
       const { data, error: rpcError } = await supabase.rpc('get_all_posts', {
@@ -51,12 +57,162 @@ export default function HomeScreen() {
       setError(err instanceof Error ? err.message : 'Failed to fetch posts');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [user?.id]);
 
+  // Set up real-time subscriptions
   useEffect(() => {
+    // Initial fetch
     fetchPosts();
-  }, [user?.id, isLoggedIn]);
+
+    // Set up real-time subscriptions
+    const postsChannel = supabase
+      .channel(`posts_${user?.id || 'anonymous'}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'posts'
+        },
+        (payload) => {
+          console.log('Posts change detected:', payload);
+          // Add delay to ensure database consistency
+          setTimeout(() => {
+            fetchPosts();
+          }, 100);
+        }
+      )
+      .subscribe();
+
+    const likesChannel = supabase
+      .channel(`likes_${user?.id || 'anonymous'}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'likes'
+        },
+        (payload) => {
+          console.log('Likes change detected:', payload);
+          
+          setTimeout(() => {
+            if (payload.eventType === 'INSERT' && payload.new.post_id) {
+            setPrompts(prev => prev.map(prompt => {
+              if (prompt.id === payload.new.post_id) {
+                return {
+                  ...prompt,
+                  likes: prompt.likes + 1,
+                  isLiked: payload.new.user_id === user?.id ? true : prompt.isLiked
+                };
+              }
+              return prompt;
+            }));
+            } else if (payload.eventType === 'DELETE' && payload.old.post_id) {
+            setPrompts(prev => prev.map(prompt => {
+              if (prompt.id === payload.old.post_id) {
+                return {
+                  ...prompt,
+                  likes: Math.max(prompt.likes - 1, 0),
+                  isLiked: payload.old.user_id === user?.id ? false : prompt.isLiked
+                };
+              }
+              return prompt;
+            }));
+            }
+          }, 100);
+        }
+      )
+      .subscribe();
+
+    const commentsChannel = supabase
+      .channel(`comments_${user?.id || 'anonymous'}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments'
+        },
+        (payload) => {
+          console.log('Comments change detected:', payload);
+          
+          setTimeout(() => {
+            if (payload.eventType === 'INSERT' && payload.new.post_id) {
+            setPrompts(prev => prev.map(prompt => {
+              if (prompt.id === payload.new.post_id) {
+                return {
+                  ...prompt,
+                  comments: prompt.comments + 1
+                };
+              }
+              return prompt;
+            }));
+            } else if (payload.eventType === 'DELETE' && payload.old.post_id) {
+            setPrompts(prev => prev.map(prompt => {
+              if (prompt.id === payload.old.post_id) {
+                return {
+                  ...prompt,
+                  comments: Math.max(prompt.comments - 1, 0)
+                };
+              }
+              return prompt;
+            }));
+            }
+          }, 100);
+        }
+      )
+      .subscribe();
+
+    const bookmarksChannel = supabase
+      .channel(`bookmarks_${user?.id || 'anonymous'}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookmarks'
+        },
+        (payload) => {
+          console.log('Bookmarks change detected:', payload);
+          
+          setTimeout(() => {
+            if (payload.eventType === 'INSERT' && payload.new.post_id) {
+            setPrompts(prev => prev.map(prompt => {
+              if (prompt.id === payload.new.post_id && payload.new.user_id === user?.id) {
+                return {
+                  ...prompt,
+                  isBookmarked: true
+                };
+              }
+              return prompt;
+            }));
+            } else if (payload.eventType === 'DELETE' && payload.old.post_id) {
+            setPrompts(prev => prev.map(prompt => {
+              if (prompt.id === payload.old.post_id && payload.old.user_id === user?.id) {
+                return {
+                  ...prompt,
+                  isBookmarked: false
+                };
+              }
+              return prompt;
+            }));
+            }
+          }, 100);
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      supabase.removeChannel(postsChannel);
+      supabase.removeChannel(likesChannel);
+      supabase.removeChannel(commentsChannel);
+      supabase.removeChannel(bookmarksChannel);
+    };
+  }, [user?.id, fetchPosts]);
 
   const handleLike = async (promptId: string) => {
     if (!user?.id) {
@@ -65,30 +221,52 @@ export default function HomeScreen() {
     }
 
     try {
+      // Optimistic update
       const prompt = prompts.find(p => p.id === promptId);
       if (!prompt) return;
 
+      const newLikedState = !prompt.isLiked;
+      const newLikesCount = newLikedState ? prompt.likes + 1 : prompt.likes - 1;
+
+      // Update UI immediately
+      setPrompts(prev => prev.map(p => 
+        p.id === promptId 
+          ? { ...p, isLiked: newLikedState, likes: newLikesCount }
+          : p
+      ));
+
       if (prompt.isLiked) {
-        await supabase
+        const { error } = await supabase
           .from('likes')
           .delete()
           .eq('user_id', user.id)
           .eq('post_id', promptId);
+        
+        if (error) {
+          // Revert optimistic update on error
+          setPrompts(prev => prev.map(p => 
+            p.id === promptId 
+              ? { ...p, isLiked: prompt.isLiked, likes: prompt.likes }
+              : p
+          ));
+          throw error;
+        }
       } else {
-        await supabase
+        const { error } = await supabase
           .from('likes')
           .insert({ user_id: user.id, post_id: promptId });
+        
+        if (error) {
+          // Revert optimistic update on error
+          setPrompts(prev => prev.map(p => 
+            p.id === promptId 
+              ? { ...p, isLiked: prompt.isLiked, likes: prompt.likes }
+              : p
+          ));
+          throw error;
+        }
       }
-
-      setPrompts(prev => prev.map(p => 
-        p.id === promptId 
-          ? { 
-              ...p, 
-              isLiked: !p.isLiked,
-              likes: p.isLiked ? p.likes - 1 : p.likes + 1
-            }
-          : p
-      ));
+      
     } catch (err) {
       console.error('Error toggling like:', err);
     }
@@ -101,26 +279,57 @@ export default function HomeScreen() {
     }
 
     try {
+      // Optimistic update
       const prompt = prompts.find(p => p.id === promptId);
       if (!prompt) return;
 
+      const newBookmarkedState = !prompt.isBookmarked;
+
+      // Update UI immediately
+      setPrompts(prev => prev.map(p => 
+        p.id === promptId 
+          ? { ...p, isBookmarked: newBookmarkedState }
+          : p
+      ));
+
       if (prompt.isBookmarked) {
-        await supabase
+        const { error } = await supabase
           .from('bookmarks')
           .delete()
           .eq('user_id', user.id)
           .eq('post_id', promptId);
+        
+        if (error) {
+          // Revert optimistic update on error
+          setPrompts(prev => prev.map(p => 
+            p.id === promptId 
+              ? { ...p, isBookmarked: prompt.isBookmarked }
+              : p
+          ));
+          throw error;
+        }
       } else {
-        await supabase
+        const { error } = await supabase
           .from('bookmarks')
           .insert({ user_id: user.id, post_id: promptId });
+        
+        if (error && error.code === '23505') {
+          // Bookmark already exists - this is fine, the optimistic update was correct
+          // No need to revert the UI state
+          console.log('Bookmark already exists, ignoring duplicate error');
+        } else if (error) {
+          // For any other error, revert the optimistic update
+          console.error('Error creating bookmark:', error);
+          // Revert optimistic update on error
+          setPrompts(prev => prev.map(p => 
+            p.id === promptId 
+              ? { ...p, isBookmarked: prompt.isBookmarked }
+              : p
+          ));
+          throw error;
+        }
       }
-
-      setPrompts(prev => prev.map(p => 
-        p.id === promptId 
-          ? { ...p, isBookmarked: !p.isBookmarked }
-          : p
-      ));
+      
     } catch (err) {
       console.error('Error toggling bookmark:', err);
     }
@@ -128,6 +337,10 @@ export default function HomeScreen() {
 
   const handleShare = (promptId: string) => {
     console.log('Share prompt:', promptId);
+  };
+
+  const onRefresh = () => {
+    fetchPosts(true);
   };
 
   const styles = StyleSheet.create({
@@ -151,10 +364,20 @@ export default function HomeScreen() {
       fontFamily: 'Inter-Bold',
       color: colors.text,
     },
-    themeButton: {
+    notificationButton: {
       padding: 8,
       borderRadius: 20,
       backgroundColor: colors.surfaceVariant,
+      position: 'relative',
+    },
+    notificationBadge: {
+      position: 'absolute',
+      top: 6,
+      right: 6,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.error,
     },
     scrollView: {
       flex: 1,
@@ -181,9 +404,6 @@ export default function HomeScreen() {
       alignItems: 'center',
       paddingHorizontal: 32,
       paddingTop: 100,
-    },
-    errorIcon: {
-      marginBottom: 16,
     },
     errorText: {
       fontSize: 18,
@@ -215,7 +435,7 @@ export default function HomeScreen() {
       justifyContent: 'center',
       alignItems: 'center',
       paddingHorizontal: 32,
-      paddingTop: 0,
+      paddingTop: 100,
     },
     emptyText: {
       fontSize: 16,
@@ -223,16 +443,32 @@ export default function HomeScreen() {
       color: colors.textSecondary,
       textAlign: 'center',
     },
+    realtimeIndicator: {
+      position: 'absolute',
+      top: Platform.OS === 'android' ? insets.top + 60 : insets.top + 64,
+      right: 20,
+      backgroundColor: colors.success,
+      borderRadius: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      opacity: 0.8,
+    },
+    realtimeText: {
+      fontSize: 10,
+      fontFamily: 'Inter-Medium',
+      color: colors.white,
+    },
   });
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Home</Text>
         </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading prompts...</Text>
         </View>
       </View>
     );
@@ -244,12 +480,13 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Home</Text>
         </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Text style={{ color: colors.text, fontFamily: 'Inter-SemiBold', fontSize: 18, marginBottom: 10 }}>
-            Failed to load posts
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Failed to load posts</Text>
+          <Text style={styles.errorDescription}>
+            Please check your connection and try again.
           </Text>
-          <TouchableOpacity onPress={fetchPosts} style={{ backgroundColor: colors.primary, padding: 12, borderRadius: 10 }}>
-            <Text style={{ color: colors.white, fontFamily: 'Inter-SemiBold' }}>Retry</Text>
+          <TouchableOpacity onPress={() => fetchPosts()} style={styles.retryButton}>
+            <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -260,22 +497,42 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Home</Text>
+        <TouchableOpacity style={styles.notificationButton}>
+          <Bell size={20} color={colors.textSecondary} />
+          <View style={styles.notificationBadge} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-      >
-        {prompts.map((prompt) => (
-          <PromptCard 
-            key={prompt.id} 
-            prompt={prompt} 
-            onLike={handleLike}
-            onBookmark={handleBookmark}
-            onShare={handleShare}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
           />
-        ))}
+        }
+      >
+        {prompts.length > 0 ? (
+          prompts.map((prompt) => (
+            <PromptCard 
+              key={prompt.id} 
+              prompt={prompt} 
+              onLike={handleLike}
+              onBookmark={handleBookmark}
+              onShare={handleShare}
+            />
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>
+              No prompts found. Be the first to share your creativity!
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );

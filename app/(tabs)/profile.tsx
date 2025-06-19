@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Ima
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Settings, CreditCard as Edit, Heart, MessageCircle, Share, Sun, Moon, TrendingUp, ChartBar as BarChart3 } from 'lucide-react-native';
+import { Settings, CreditCard as Edit, Heart, MessageCircle, Share, Sun, Moon, TrendingUp, ChartBar as BarChart3, User, Bookmark, ThumbsUp } from 'lucide-react-native';
 import { LogOut } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -28,6 +28,7 @@ interface UserPost {
   comments_count: number;
   shares_count: number;
 }
+
 export default function ProfileScreen() {
   const { colors, theme, toggleTheme } = useTheme();
   const { user, isLoggedIn, signOut, profile } = useAuth();
@@ -147,17 +148,12 @@ export default function ProfileScreen() {
   const handleViewPostActivity = (postId: string) => {
     router.push(`/post-activity/${postId}`);
   };
+
   useEffect(() => {
     if (isLoggedIn && user) {
       fetchUserStats();
     }
   }, [isLoggedIn, user]);
-
-  const stats = [
-    { label: 'Prompts', value: userStats.posts.toString(), icon: MessageCircle },
-    { label: 'Likes', value: userStats.likes.toString(), icon: Heart },
-    { label: 'Shares', value: userStats.shares.toString(), icon: Share },
-  ];
 
   const styles = StyleSheet.create({
     container: {
@@ -192,11 +188,16 @@ export default function ProfileScreen() {
     profileSection: {
       backgroundColor: colors.surface,
       margin: 16,
-      borderRadius: 16,
-      padding: 20,
+      borderRadius: 20,
+      padding: 24,
       alignItems: 'center',
       borderWidth: 1,
       borderColor: colors.border,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
     },
     guestAvatar: {
       width: 80,
@@ -224,6 +225,7 @@ export default function ProfileScreen() {
       color: colors.textSecondary,
       textAlign: 'center',
       marginBottom: 20,
+      lineHeight: 22,
     },
     signInButton: {
       backgroundColor: colors.primary,
@@ -277,10 +279,15 @@ export default function ProfileScreen() {
       backgroundColor: colors.surface,
       marginHorizontal: 16,
       marginBottom: 16,
-      borderRadius: 16,
+      borderRadius: 20,
       padding: 20,
       borderWidth: 1,
       borderColor: colors.border,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
     },
     statsTitle: {
       fontSize: 18,
@@ -289,32 +296,48 @@ export default function ProfileScreen() {
       marginBottom: 16,
       textAlign: 'center',
     },
-    statsRow: {
+    statsGrid: {
       flexDirection: 'row',
-      justifyContent: 'space-around',
+      justifyContent: 'space-between',
     },
     statItem: {
       alignItems: 'center',
+      flex: 1,
+    },
+    statIconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.primary + '20',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 8,
     },
     statValue: {
-      fontSize: 24,
+      fontSize: 20,
       fontFamily: 'Inter-Bold',
       color: colors.text,
       marginBottom: 4,
     },
     statLabel: {
-      fontSize: 14,
-      fontFamily: 'Inter-Regular',
+      fontSize: 12,
+      fontFamily: 'Inter-Medium',
       color: colors.textSecondary,
+      textAlign: 'center',
     },
     additionalStatsSection: {
       backgroundColor: colors.surface,
       marginHorizontal: 16,
       marginBottom: 16,
-      borderRadius: 16,
+      borderRadius: 20,
       padding: 20,
       borderWidth: 1,
       borderColor: colors.border,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
     },
     additionalStatsTitle: {
       fontSize: 16,
@@ -322,27 +345,45 @@ export default function ProfileScreen() {
       color: colors.text,
       marginBottom: 16,
     },
-    additionalStatsRow: {
+    additionalStatsGrid: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       justifyContent: 'space-between',
-      marginBottom: 12,
     },
-    additionalStatLabel: {
-      fontSize: 15,
-      fontFamily: 'Inter-Regular',
-      color: colors.textSecondary,
+    additionalStatItem: {
+      width: '48%',
+      backgroundColor: colors.surfaceVariant,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      alignItems: 'center',
+    },
+    additionalStatIcon: {
+      marginBottom: 8,
     },
     additionalStatValue: {
-      fontSize: 15,
-      fontFamily: 'Inter-SemiBold',
+      fontSize: 18,
+      fontFamily: 'Inter-Bold',
       color: colors.text,
+      marginBottom: 4,
+    },
+    additionalStatLabel: {
+      fontSize: 11,
+      fontFamily: 'Inter-Medium',
+      color: colors.textSecondary,
+      textAlign: 'center',
     },
     settingsSection: {
       backgroundColor: colors.surface,
       marginHorizontal: 16,
-      borderRadius: 16,
+      borderRadius: 20,
       borderWidth: 1,
       borderColor: colors.border,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
     },
     settingItem: {
       flexDirection: 'row',
@@ -373,21 +414,26 @@ export default function ProfileScreen() {
       backgroundColor: colors.surface,
       marginHorizontal: 16,
       marginBottom: 16,
-      borderRadius: 16,
+      borderRadius: 20,
       borderWidth: 1,
       borderColor: colors.border,
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
     },
     postsSectionTitle: {
       fontSize: 16,
       fontFamily: 'Inter-SemiBold',
       color: colors.text,
-      padding: 16,
+      padding: 20,
       paddingBottom: 8,
     },
     postItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 16,
+      paddingHorizontal: 20,
       paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: colors.borderLight,
@@ -446,6 +492,54 @@ export default function ProfileScreen() {
     },
   });
 
+  const mainStats = [
+    { 
+      label: 'Posts', 
+      value: userStats.posts.toString(), 
+      icon: MessageCircle,
+      color: colors.primary 
+    },
+    { 
+      label: 'Likes', 
+      value: userStats.likes.toString(), 
+      icon: Heart,
+      color: colors.error 
+    },
+    { 
+      label: 'Shares', 
+      value: userStats.shares.toString(), 
+      icon: Share,
+      color: colors.success 
+    },
+  ];
+
+  const additionalStats = [
+    { 
+      label: 'Bookmarks Given', 
+      value: userStats.bookmarksGiven, 
+      icon: Bookmark,
+      color: colors.primary 
+    },
+    { 
+      label: 'Comments Made', 
+      value: userStats.commentsGiven, 
+      icon: MessageCircle,
+      color: colors.secondary 
+    },
+    { 
+      label: 'Likes Given', 
+      value: userStats.likesGiven, 
+      icon: ThumbsUp,
+      color: colors.error 
+    },
+    { 
+      label: 'Total Engagement', 
+      value: userStats.likes + userStats.bookmarks + userStats.shares, 
+      icon: TrendingUp,
+      color: colors.success 
+    },
+  ];
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -479,9 +573,9 @@ export default function ProfileScreen() {
         ) : (
           <View style={styles.profileSection}>
             <View style={styles.guestAvatar}>
-              <Text style={styles.guestAvatarText}>?</Text>
+              <User size={32} color={colors.textSecondary} />
             </View>
-            <Text style={styles.guestName}>Guest User</Text>
+            <Text style={styles.guestName}>Welcome!</Text>
             <Text style={styles.guestDescription}>
               Sign in to create prompts, like content, and connect with the community.
             </Text>
@@ -503,13 +597,19 @@ export default function ProfileScreen() {
                   <Text style={styles.loadingText}>Loading stats...</Text>
                 </View>
               ) : (
-                <View style={styles.statsRow}>
-                  {stats.map((stat, index) => (
-                    <View key={index} style={styles.statItem}>
-                      <Text style={styles.statValue}>{stat.value}</Text>
-                      <Text style={styles.statLabel}>{stat.label}</Text>
-                    </View>
-                  ))}
+                <View style={styles.statsGrid}>
+                  {mainStats.map((stat, index) => {
+                    const IconComponent = stat.icon;
+                    return (
+                      <View key={index} style={styles.statItem}>
+                        <View style={[styles.statIconContainer, { backgroundColor: stat.color + '20' }]}>
+                          <IconComponent size={20} color={stat.color} />
+                        </View>
+                        <Text style={styles.statValue}>{stat.value}</Text>
+                        <Text style={styles.statLabel}>{stat.label}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -523,33 +623,27 @@ export default function ProfileScreen() {
                   <Text style={styles.loadingText}>Loading details...</Text>
                 </View>
               ) : (
-                <>
-                  <View style={styles.additionalStatsRow}>
-                    <Text style={styles.additionalStatLabel}>Your Bookmarks</Text>
-                    <Text style={styles.additionalStatValue}>{userStats.bookmarksGiven}</Text>
-                  </View>
-                  <View style={styles.additionalStatsRow}>
-                    <Text style={styles.additionalStatLabel}>Your Comments</Text>
-                    <Text style={styles.additionalStatValue}>{userStats.commentsGiven}</Text>
-                  </View>
-                  <View style={styles.additionalStatsRow}>
-                    <Text style={styles.additionalStatLabel}>Your Likes Given</Text>
-                    <Text style={styles.additionalStatValue}>{userStats.likesGiven}</Text>
-                  </View>
-                  <View style={[styles.additionalStatsRow, { marginBottom: 0 }]}>
-                    <Text style={styles.additionalStatLabel}>Total Engagement</Text>
-                    <Text style={styles.additionalStatValue}>
-                      {userStats.likes + userStats.bookmarks + userStats.shares}
-                    </Text>
-                  </View>
-                </>
+                <View style={styles.additionalStatsGrid}>
+                  {additionalStats.map((stat, index) => {
+                    const IconComponent = stat.icon;
+                    return (
+                      <View key={index} style={styles.additionalStatItem}>
+                        <View style={styles.additionalStatIcon}>
+                          <IconComponent size={18} color={stat.color} />
+                        </View>
+                        <Text style={styles.additionalStatValue}>{stat.value}</Text>
+                        <Text style={styles.additionalStatLabel}>{stat.label}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
               )}
             </View>
 
             {/* User Posts Section */}
             {userPosts.length > 0 && (
               <View style={styles.postsSection}>
-                <Text style={styles.postsSectionTitle}>Your Posts</Text>
+                <Text style={styles.postsSectionTitle}>Recent Posts</Text>
                 {userPosts.slice(0, 3).map((post) => (
                   <TouchableOpacity 
                     key={post.id} 
@@ -598,7 +692,7 @@ export default function ProfileScreen() {
                 <Moon size={20} color={colors.textSecondary} />
               )}
             </View>
-            <Text style={styles.settingText}>Theme</Text>
+            <Text style={styles.settingText}>Appearance</Text>
             <Text style={styles.settingValue}>
               {theme === 'dark' ? 'Dark' : 'Light'}
             </Text>
