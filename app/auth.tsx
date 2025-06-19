@@ -75,7 +75,7 @@ export default function AuthScreen() {
 
       if (isSignUp) {
         const username = '@' + name.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '_').substring(0, 19);
-        result = await signUp(email.trim(), password, username, selectedAvatar || undefined);
+        result = await signUp(email.trim(), password, name.trim(), username, selectedAvatar || undefined);
       } else {
         result = await signIn(email.trim(), password);
       }

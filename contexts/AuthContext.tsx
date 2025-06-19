@@ -20,7 +20,7 @@ interface AuthContextType {
   isLoggedIn: boolean;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
-  signUp: (email: string, password: string, username: string, avatarUrl?: string) => Promise<{ error?: string }>;
+  signUp: (email: string, password: string, fullName: string, username: string, avatarUrl?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error?: string }>;
 }
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data && data.length > 0) {
         const profile = data[0];
-        setProfile(data);
+        setProfile(profile);
         setUser(prev => prev ? { 
           ...prev, 
           name: profile.username || prev.name,
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...prev,
           name: prev.email?.split('@')[0] || 'User',
           avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
-          profile: null
+          profile: undefined
         } : null);
       }
     } catch (error) {
@@ -131,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (
     email: string, 
     password: string, 
+    fullName: string,
     username: string,
     avatarUrl?: string
   ): Promise<{ error?: string }> => {
@@ -167,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         options: {
           data: {
+            full_name: fullName,
             username,
             avatar_url: avatarUrl,
           },

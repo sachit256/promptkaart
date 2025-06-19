@@ -217,32 +217,24 @@ export function PromptCard({
     promptContainer: {
       marginBottom: 16,
     },
-    promptTextContainer: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'flex-end',
-    },
     promptText: {
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: 'Inter-Regular',
       color: colors.text,
       lineHeight: 22,
-      flex: 1,
     },
     readMoreButton: {
       flexDirection: 'row',
       alignItems: 'center',
+      alignSelf: 'flex-start',
+      marginTop: 8,
       paddingVertical: 2,
-      paddingHorizontal: 6,
-      borderRadius: 8,
-      backgroundColor: colors.surfaceVariant,
-      marginLeft: 4,
     },
     readMoreText: {
-      fontSize: 12,
+      fontSize: 14,
       fontFamily: 'Inter-Medium',
-      color: colors.primary,
-      marginRight: 2,
+      color: colors.textSecondary,
+      marginRight: 4,
     },
     tagsContainer: {
       flexDirection: 'row',
@@ -418,27 +410,25 @@ export function PromptCard({
         <View style={styles.content}>
           {/* Prompt Text with Inline Read More/Less */}
           <View style={styles.promptContainer}>
-            <View style={styles.promptTextContainer}>
-              <Text style={styles.promptText}>
-                {displayText}
-                {!isExpanded && shouldShowReadMore && '... '}
-                {shouldShowReadMore && (
-                  <TouchableOpacity
-                    style={styles.readMoreButton}
-                    onPress={toggleReadMore}
-                  >
-                    <Text style={styles.readMoreText}>
-                      {isExpanded ? 'less' : 'more'}
-                    </Text>
-                    {isExpanded ? (
-                      <ChevronUp size={12} color={colors.primary} />
-                    ) : (
-                      <ChevronDown size={12} color={colors.primary} />
-                    )}
-                  </TouchableOpacity>
+            <Text style={styles.promptText}>
+              {displayText}
+              {!isExpanded && shouldShowReadMore && '...'}
+            </Text>
+            {shouldShowReadMore && (
+              <TouchableOpacity
+                style={styles.readMoreButton}
+                onPress={toggleReadMore}
+              >
+                <Text style={styles.readMoreText}>
+                  {isExpanded ? 'Show less' : 'Read more'}
+                </Text>
+                {isExpanded ? (
+                  <ChevronUp size={16} color={colors.textSecondary} />
+                ) : (
+                  <ChevronDown size={16} color={colors.textSecondary} />
                 )}
-              </Text>
-            </View>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.tagsContainer}>

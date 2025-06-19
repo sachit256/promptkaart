@@ -496,8 +496,11 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Home</Text>
-        <TouchableOpacity style={styles.notificationButton}>
+        <Text style={styles.headerTitle}>PromptKaart</Text>
+        <TouchableOpacity 
+          style={styles.notificationButton}
+          onPress={() => router.push('/notifications')}
+        >
           <Bell size={20} color={colors.textSecondary} />
           <View style={styles.notificationBadge} />
         </TouchableOpacity>

@@ -183,7 +183,9 @@ export default function ProfileScreen() {
     },
     content: {
       flex: 1,
-      paddingBottom: 140, // Fixed padding for floating tab bar
+    },
+    contentContainer: {
+      paddingBottom: insets.bottom + 140, // Generous padding for floating tab bar
     },
     profileSection: {
       backgroundColor: colors.surface,
@@ -551,7 +553,11 @@ export default function ProfileScreen() {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Section */}
         {isLoggedIn ? (
           <View style={styles.profileSection}>

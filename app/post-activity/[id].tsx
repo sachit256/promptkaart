@@ -7,6 +7,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Heart, MessageCircle, Bookmark, Share, Users, TrendingUp, CircleAlert as AlertCircle } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 
+type PostDetails = {
+  id: string;
+  prompt: string;
+  category: string;
+  created_at: string;
+  likes: number;
+  comments: number;
+  shares: number;
+  author: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
+};
+
 interface PostActivity {
   id: string;
   prompt: string;
@@ -70,19 +85,11 @@ export default function PostActivityScreen() {
       setLoading(true);
       setError(null);
 
-      // Fetch post details
-      const { data: postData, error: postError } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles!posts_user_id_fkey (
-            id,
-            username,
-            avatar_url
-          )
-        `)
-        .eq('id', id)
-        .single();
+      // Fetch post details using the RPC function
+      const { data: postData, error: postError } = await supabase.rpc('get_post_details', {
+        p_post_id: id,
+        p_user_id: user?.id || null,
+      }).single<PostDetails>();
 
       if (postError) throw postError;
 
@@ -91,34 +98,29 @@ export default function PostActivityScreen() {
       }
 
       // Check if current user is the post owner
-      if (user?.id !== postData.user_id) {
+      if (user?.id !== postData.author.id) {
         throw new Error('You can only view activity for your own posts');
       }
 
-      // Get bookmark count
-      const { data: bookmarkData } = await supabase
+      // Get bookmark count (if needed separately, otherwise it's in postData)
+      const { count: bookmarkCount, error: bookmarkError } = await supabase
         .from('bookmarks')
-        .select('id')
+        .select('*', { count: 'exact', head: true })
         .eq('post_id', id);
 
-      // Handle profiles as array or object
-      let profileObj: any = postData.profiles;
-      if (Array.isArray(profileObj)) {
-        profileObj = profileObj[0] || {};
-      }
       const transformedPost: PostActivity = {
         id: postData.id,
         prompt: postData.prompt,
         category: postData.category,
         created_at: postData.created_at,
-        likes_count: postData.likes_count || 0,
-        comments_count: postData.comments_count || 0,
-        shares_count: postData.shares_count || 0,
-        bookmarks_count: bookmarkData?.length || 0,
+        likes_count: postData.likes || 0,
+        comments_count: postData.comments || 0,
+        shares_count: postData.shares || 0,
+        bookmarks_count: bookmarkCount || 0,
         author: {
-          id: profileObj?.id || postData.user_id,
-          name: profileObj?.username || 'Deleted User',
-          avatar: profileObj?.avatar_url && profileObj?.avatar_url.trim() !== '' ? profileObj?.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg'
+          id: postData.author.id,
+          name: postData.author.name || 'Deleted User',
+          avatar: postData.author.avatar && postData.author.avatar.trim() !== '' ? postData.author.avatar : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg'
         }
       };
 
@@ -153,25 +155,20 @@ export default function PostActivityScreen() {
       ]);
 
       const detailedActivity: DetailedActivity = {
-        likes: likesResponse.data?.map((like: any) => {
-          const profile = Array.isArray(like.profiles) ? like.profiles[0] : like.profiles;
-          return {
+        likes: likesResponse.data?.map((like: any) => ({
           id: like.user_id,
-          name: profile?.username || 'Deleted User',
-          avatar: profile?.avatar_url && profile?.avatar_url.trim() !== '' ? profile?.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
+          name: like.name || 'Deleted User',
+          avatar: like.avatar && like.avatar.trim() !== '' ? like.avatar : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
           created_at: like.created_at,
-          };
-        }) || [],
+        })) || [],
         
-        comments: commentsResponse.data?.map((comment: any) => {
-          const profile = Array.isArray(comment.profiles) ? comment.profiles[0] : comment.profiles;
-          return {
+        comments: commentsResponse.data?.map((comment: any) => ({
           id: comment.id,
           content: comment.content,
           user: {
-            id: profile?.id || comment.user_id,
-            name: profile?.username || 'Deleted User',
-            avatar: profile?.avatar_url && profile?.avatar_url.trim() !== '' ? profile?.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
+            id: comment.user_id,
+            name: comment.full_name || 'Deleted User',
+            avatar: comment.avatar_url && comment.avatar_url.trim() !== '' ? comment.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
             created_at: comment.created_at
           },
           created_at: comment.created_at,
@@ -179,18 +176,14 @@ export default function PostActivityScreen() {
           replies_count: comment.replies_count,
           likes_count: comment.likes_count,
           replies: []
-          };
-        }) || [],
+        })) || [],
         
-        bookmarks: bookmarksResponse.data?.map((bookmark: any) => {
-          const profile = Array.isArray(bookmark.profiles) ? bookmark.profiles[0] : bookmark.profiles;
-          return {
+        bookmarks: bookmarksResponse.data?.map((bookmark: any) => ({
           id: bookmark.user_id,
-          name: profile?.username || 'Deleted User',
-          avatar: profile?.avatar_url && profile?.avatar_url.trim() !== '' ? profile?.avatar_url : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
+          name: bookmark.name || 'Deleted User',
+          avatar: bookmark.avatar && bookmark.avatar.trim() !== '' ? bookmark.avatar : 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg',
           created_at: bookmark.created_at,
-          };
-        }) || [],
+        })) || [],
         
         shares: [] // Shares functionality to be implemented
       };
@@ -251,16 +244,16 @@ export default function PostActivityScreen() {
     return (
       <View style={{ marginLeft: level > 0 ? 44 : 0 }}>
         <View style={styles.commentContainer}>
-          {level > 0 && <View style={[styles.replyLine, { backgroundColor: colors.border }]} />}
           <Image source={{ uri: comment.user.avatar }} style={styles.userAvatar} />
           <View style={styles.commentBody}>
             <View style={styles.commentHeader}>
-              <Text style={[styles.userName, { color: colors.text }]}>{comment.user.name}</Text>
-              <Text style={[styles.commentContentText, { color: colors.text }]}> {comment.content}</Text>
+              <Text>
+                <Text style={[styles.userName, { color: colors.text }]}>{comment.user.name}</Text>
+                <Text style={[styles.commentContentText, { color: colors.text }]}> {comment.content}</Text>
+              </Text>
             </View>
             <View style={styles.commentFooter}>
               <Text style={[styles.activityTime, { color: colors.secondary }]}>{formatTimeAgo(comment.created_at)}</Text>
-              {comment.likes_count > 0 && <Text style={[styles.likesCount, { color: colors.secondary }]}>{comment.likes_count} likes</Text>}
               <TouchableOpacity>
                 <Text style={[styles.replyAction, { color: colors.secondary }]}>Reply</Text>
               </TouchableOpacity>
@@ -447,10 +440,10 @@ export default function PostActivityScreen() {
       borderColor: colors.border,
     },
     postPrompt: {
-      fontSize: 16,
+      fontSize: 14,
       fontFamily: 'Inter-Regular',
       color: colors.text,
-      lineHeight: 22,
+      lineHeight: 20,
       marginBottom: 12,
     },
     postMeta: {
@@ -533,6 +526,7 @@ export default function PostActivityScreen() {
     },
     tabContent: {
       maxHeight: 400,
+      marginHorizontal: 7,
     },
     activityItem: {
       flexDirection: 'row',
@@ -568,20 +562,16 @@ export default function PostActivityScreen() {
     },
     commentHeader: {
       flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      flexWrap: 'wrap',
       marginBottom: 4,
     },
     userName: {
-      fontSize: 14,
-      fontFamily: 'Inter-SemiBold',
-      color: colors.text,
-      marginRight: 8,
+      fontSize: 15,
+      fontWeight: 'bold',
     },
     activityTime: {
       fontSize: 12,
-      fontFamily: 'Inter-Regular',
-      color: colors.textSecondary,
     },
     commentText: {
       fontSize: 13,
@@ -682,11 +672,14 @@ export default function PostActivityScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ArrowLeft size={20} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Post Activity</Text>
-        </View>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <ArrowLeft size={18} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+        Post Activity
+        </Text>
+      </View>
+
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading activity...</Text>
@@ -733,7 +726,7 @@ export default function PostActivityScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Post Summary */}
         <View style={styles.postSummary}>
-          <Text style={styles.postPrompt} numberOfLines={3}>
+          <Text style={styles.postPrompt}>
             {post.prompt}
           </Text>
           <View style={styles.postMeta}>

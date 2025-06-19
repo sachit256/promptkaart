@@ -452,10 +452,10 @@ export default function PromptDetailScreen() {
       marginTop: 2,
     },
     promptText: {
-      fontSize: 16,
+      fontSize: 14,
       fontFamily: 'Inter-Regular',
       color: colors.text,
-      lineHeight: 24,
+      lineHeight: 22,
       marginBottom: 24,
     },
     tagsContainer: {
