@@ -9,7 +9,19 @@ import { PromptCard } from '@/components/PromptCard';
 import { supabase } from '@/lib/supabase';
 import { Prompt } from '@/types/prompt';
 
-type BookmarkedPrompt = Omit<Prompt, 'author'> & {
+type BookmarkedPrompt = {
+  id: string;
+  prompt: string;
+  ai_source: string;
+  images: string[];
+  category: string;
+  tags: string[];
+  likes: number;
+  comments: number;
+  shares: number;
+  created_at: string;
+  is_liked: boolean;
+  is_bookmarked: boolean;
   author: {
     id: string;
     name: string;
@@ -61,10 +73,20 @@ export default function FavoritesScreen() {
       }
 
       const transformedPrompts: Prompt[] = (data as BookmarkedPrompt[]).map((p) => ({
-        ...p,
+        id: p.id,
+        prompt: p.prompt,
         ai_source: ['chatgpt', 'grok', 'gemini'].includes(p.ai_source)
           ? (p.ai_source as Prompt['ai_source'])
           : 'chatgpt',
+        images: p.images,
+        category: p.category,
+        tags: p.tags,
+        likes: p.likes,
+        comments: p.comments,
+        shares: p.shares,
+        isLiked: p.is_liked,
+        isBookmarked: p.is_bookmarked,
+        createdAt: p.created_at,
         author: {
           id: p.author.id || 'unknown-author',
           name: p.author.name || 'Deleted User',

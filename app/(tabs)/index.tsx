@@ -40,10 +40,20 @@ export default function HomeScreen() {
       }
 
       const transformedPrompts: Prompt[] = data.map((p: any) => ({
-        ...p,
+        id: p.id,
+        prompt: p.prompt,
         ai_source: ['chatgpt', 'grok', 'gemini'].includes(p.ai_source)
           ? (p.ai_source as Prompt['ai_source'])
           : 'chatgpt',
+        images: p.images,
+        category: p.category,
+        tags: p.tags,
+        likes: p.likes,
+        comments: p.comments,
+        shares: p.shares,
+        isLiked: p.is_liked,
+        isBookmarked: p.is_bookmarked,
+        createdAt: p.created_at,
         author: {
           id: p.author?.id || 'unknown-author',
           name: p.author?.name || 'Deleted User',
@@ -72,16 +82,52 @@ export default function HomeScreen() {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'posts'
         },
         (payload) => {
-          console.log('Posts change detected:', payload);
+          console.log('New post detected:', payload);
           // Add delay to ensure database consistency
           setTimeout(() => {
             fetchPosts();
           }, 100);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'posts'
+        },
+        (payload) => {
+          console.log('Post updated:', payload);
+          // Only refetch if the post content was actually updated (not just count changes)
+          if (payload.new && (payload.new.prompt !== payload.old?.prompt || 
+                             payload.new.images !== payload.old?.images ||
+                             payload.new.category !== payload.old?.category ||
+                             payload.new.tags !== payload.old?.tags ||
+                             payload.new.title !== payload.old?.title ||
+                             payload.new.description !== payload.old?.description ||
+                             payload.new.content !== payload.old?.content)) {
+            setTimeout(() => {
+              fetchPosts();
+            }, 100);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'posts'
+        },
+        (payload) => {
+          console.log('Post deleted:', payload);
+          // Remove the deleted post from the list
+          setPrompts(prev => prev.filter(p => p.id !== payload.old.id));
         }
       )
       .subscribe();

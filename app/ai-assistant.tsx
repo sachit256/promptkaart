@@ -255,7 +255,7 @@ export default function AIAssistantScreen() {
       alignItems: 'flex-end',
       paddingHorizontal: 16,
       paddingVertical: 12,
-      paddingBottom: Platform.OS === 'android' ? 12 + insets.bottom : 12,
+      paddingBottom: Platform.OS === 'ios' ? 12 + insets.bottom : 12 + insets.bottom,
       backgroundColor: colors.surface,
       borderTopWidth: 1,
       borderTopColor: colors.borderLight,
@@ -271,6 +271,7 @@ export default function AIAssistantScreen() {
       color: colors.text,
       maxHeight: 100,
       marginRight: 12,
+      minHeight: 44,
     },
     sendButton: {
       backgroundColor: colors.primary,
@@ -323,15 +324,15 @@ export default function AIAssistantScreen() {
 
       <KeyboardAvoidingView 
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 40 }}
         >
           {messages.map((message) => (
             <View

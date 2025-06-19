@@ -20,6 +20,7 @@ import {
   ChevronUp,
   CreditCard as Edit,
   ChartBar as BarChart3,
+  Brain,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -298,7 +299,7 @@ export function PromptCard({
       color: colors.error,
     },
     likedButton: {
-      backgroundColor: colors.surfaceVariant,
+      // backgroundColor: colors.surfaceVariant,
     },
     bookmarkedText: {
       color: colors.primary,
@@ -318,6 +319,19 @@ export function PromptCard({
     avatarPlaceholder: {
       backgroundColor: colors.surfaceVariant,
     },
+    aiSourceBadge: {
+      borderRadius: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 8,
+    },
+    aiSourceText: {
+      fontSize: 10,
+      fontFamily: 'Inter-SemiBold',
+      marginLeft: 4,
+    },
   });
 
   // Use provided bookmark count or default to 0
@@ -325,6 +339,15 @@ export function PromptCard({
 
   // Check if current user owns this prompt
   const isOwner = user?.id === prompt.author.id;
+
+  const getAISourceColor = (aiSource: string) => {
+    switch (aiSource) {
+      case 'chatgpt': return '#10A37F';
+      case 'gemini': return '#4285F4';
+      case 'grok': return '#1DA1F2';
+      default: return colors.primary;
+    }
+  };
 
   return (
     <TouchableOpacity onPress={handleCardPress} activeOpacity={0.98}>
@@ -346,7 +369,25 @@ export function PromptCard({
           </View>
           <View style={styles.authorInfo}>
             <Text style={styles.authorName}>{prompt.author.name}</Text>
-            <Text style={styles.category}>{prompt.category}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.category}>{prompt.category}</Text>
+              <View
+                style={[
+                  styles.aiSourceBadge,
+                  { backgroundColor: getAISourceColor(prompt.ai_source) + '20' },
+                ]}
+              >
+                <Brain size={10} color={getAISourceColor(prompt.ai_source)} />
+                <Text
+                  style={[
+                    styles.aiSourceText,
+                    { color: getAISourceColor(prompt.ai_source) },
+                  ]}
+                >
+                  {prompt.ai_source.toUpperCase()}
+                </Text>
+              </View>
+            </View>
           </View>
           {isOwner && (
             <View style={styles.headerActions}>

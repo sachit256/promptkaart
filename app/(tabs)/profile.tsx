@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Ima
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Settings, CreditCard as Edit, Heart, MessageCircle, Share, Sun, Moon, TrendingUp, ChartBar as BarChart3, User, Bookmark, ThumbsUp } from 'lucide-react-native';
+import { Settings, CreditCard as Edit, Heart, MessageCircle, Share, Sun, Moon, TrendingUp, ChartBar as BarChart3, User, Bookmark, ThumbsUp, Sparkles } from 'lucide-react-native';
 import { LogOut } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { resetHasSeenWelcome } from '@/utils/onboarding';
 
 interface UserStats {
   posts: number;
@@ -63,6 +64,16 @@ export default function ProfileScreen() {
         }
       ]
     );
+  };
+
+  const handleShowWelcomeAgain = async () => {
+    try {
+      await resetHasSeenWelcome();
+      router.push('/welcome');
+    } catch (error) {
+      console.error('Error resetting onboarding state:', error);
+      Alert.alert('Error', 'Failed to show welcome screen again. Please try again.');
+    }
   };
 
   const fetchUserStats = async () => {
@@ -687,6 +698,17 @@ export default function ProfileScreen() {
 
         {/* Settings Section */}
         <View style={styles.settingsSection}>
+          <TouchableOpacity 
+            style={styles.settingItem}
+            onPress={handleShowWelcomeAgain}
+          >
+            <View style={styles.settingIcon}>
+              <Sparkles size={20} color={colors.textSecondary} />
+            </View>
+            <Text style={styles.settingText}>Show Welcome Again</Text>
+            <Text style={styles.settingValue}>Onboarding</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity 
             style={[styles.settingItem, styles.lastSettingItem]}
             onPress={toggleTheme}
