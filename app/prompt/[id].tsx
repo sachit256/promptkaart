@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity, StyleSheet, Dimensions, TextInput, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Image, TouchableOpacity, StyleSheet, Dimensions, TextInput, Alert, Platform, ActivityIndicator, Modal, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Heart, MessageCircle, Share, ChevronLeft, ChevronRight, Send, Bookmark, CircleAlert as AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, Heart, MessageCircle, Share, ChevronLeft, ChevronRight, Send, Bookmark, CircleAlert as AlertCircle, X } from 'lucide-react-native';
 import { CommentCard } from '@/components/CommentCard';
 import { useComments } from '@/hooks/useComments';
 import { supabase } from '@/lib/supabase';
@@ -32,6 +32,7 @@ export default function PromptDetailScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
   
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,18 +95,9 @@ export default function PromptDetailScreen() {
     }
   }, [id, user?.id]);
 
-  const handleNextImage = () => {
-    if (!prompt) return;
-    setCurrentImageIndex((prev) => 
-      prev === prompt.images.length - 1 ? 0 : prev + 1
-    );
-  };
-
-  const handlePrevImage = () => {
-    if (!prompt) return;
-    setCurrentImageIndex((prev) => 
-      prev === 0 ? prompt.images.length - 1 : prev - 1
-    );
+  const handleImagePress = (index: number) => {
+    setCurrentImageIndex(index);
+    setImageModalVisible(true);
   };
 
   const handleLike = async () => {
@@ -364,50 +356,18 @@ export default function PromptDetailScreen() {
       flex: 1,
       paddingBottom: insets.bottom,
     },
-    imageContainer: {
-      position: 'relative',
-      height: IMAGE_HEIGHT,
-      backgroundColor: colors.surfaceVariant,
+    imageScrollView: {
+      paddingVertical: 16,
     },
-    image: {
-      width: '100%',
-      height: '100%',
-    },
-    imageNavigation: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      justifyContent: 'center',
+    imageScrollViewContent: {
+      gap: 12,
       paddingHorizontal: 16,
     },
-    navLeft: {
-      left: 0,
-    },
-    navRight: {
-      right: 0,
-    },
-    navButton: {
-      backgroundColor: 'rgba(0, 0, 0, 0.6)',
-      borderRadius: 20,
-      padding: 8,
-    },
-    imageIndicators: {
-      position: 'absolute',
-      bottom: 16,
-      left: 0,
-      right: 0,
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 8,
-    },
-    indicator: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    },
-    activeIndicator: {
-      backgroundColor: colors.primary,
+    image: {
+      width: width - 80,
+      height: width - 80,
+      borderRadius: 12,
+      backgroundColor: colors.surfaceVariant,
     },
     content: {
       padding: 20,
@@ -599,6 +559,75 @@ export default function PromptDetailScreen() {
       color: colors.textSecondary,
       paddingVertical: 32,
     },
+    modalContainer: {
+      flex: 1,
+      backgroundColor: 'black',
+    },
+    modalHeader: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingTop: StatusBar.currentHeight || 44,
+      paddingBottom: 16,
+      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    },
+    modalImageContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalImage: {
+      width: width,
+      height: width, // Square aspect ratio for modal
+      resizeMode: 'contain',
+    },
+    modalNavigation: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      paddingHorizontal: 20,
+    },
+    modalNavButton: {
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      borderRadius: 25,
+      padding: 12,
+    },
+    modalIndicators: {
+      position: 'absolute',
+      bottom: 100,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    modalIndicator: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    },
+    modalActiveIndicator: {
+      backgroundColor: 'white',
+    },
+    closeButton: {
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      borderRadius: 20,
+      padding: 8,
+    },
+    navLeft: {
+      left: 0,
+    },
+    navRight: {
+      right: 0,
+    },
   });
 
   if (loading) {
@@ -661,47 +690,28 @@ export default function PromptDetailScreen() {
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Images Carousel */}
-        <View style={styles.imageContainer}>
-          <Image 
-            source={{ uri: prompt.images[currentImageIndex] }} 
-            style={styles.image}
-            resizeMode="cover"
-          />
-          
-          {prompt.images.length > 1 && (
-            <>
-              <TouchableOpacity 
-                style={[styles.imageNavigation, styles.navLeft]}
-                onPress={handlePrevImage}
-              >
-                <View style={styles.navButton}>
-                  <ChevronLeft size={24} color="white" />
-                </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.imageNavigation, styles.navRight]}
-                onPress={handleNextImage}
-              >
-                <View style={styles.navButton}>
-                  <ChevronRight size={24} color="white" />
-                </View>
-              </TouchableOpacity>
-
-              <View style={styles.imageIndicators}>
-                {prompt.images.map((_, index) => (
-                  <View 
-                    key={index}
-                    style={[
-                      styles.indicator,
-                      index === currentImageIndex && styles.activeIndicator
-                    ]}
+        {prompt.images && prompt.images.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.imageScrollView}
+              contentContainerStyle={styles.imageScrollViewContent}
+            >
+              {prompt.images.map((imageUrl, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => handleImagePress(index)}
+                  activeOpacity={0.9}
+                >
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.image}
+                    resizeMode="cover"
                   />
-                ))}
-              </View>
-            </>
-          )}
-        </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+        )}
 
         {/* Content */}
         <View style={styles.content}>
@@ -863,6 +873,65 @@ export default function PromptDetailScreen() {
           </View>
         </View>
       </ScrollView>
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setImageModalVisible(false)}
+            >
+              <X size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalImageContainer}>
+            <Image
+              source={{ uri: prompt.images[currentImageIndex] }}
+              style={styles.modalImage}
+              resizeMode="contain"
+            />
+
+            {prompt.images.length > 1 && (
+              <>
+                <TouchableOpacity
+                  style={[styles.modalNavigation, styles.navLeft]}
+                  onPress={() => setCurrentImageIndex(prev => prev === 0 ? prompt.images.length - 1 : prev - 1)}
+                >
+                  <View style={styles.modalNavButton}>
+                    <ChevronLeft size={24} color="white" />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalNavigation, styles.navRight]}
+                  onPress={() => setCurrentImageIndex(prev => prev === prompt.images.length - 1 ? 0 : prev + 1)}
+                >
+                  <View style={styles.modalNavButton}>
+                    <ChevronRight size={24} color="white" />
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.modalIndicators}>
+                  {prompt.images.map((_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.modalIndicator,
+                        index === currentImageIndex && styles.modalActiveIndicator,
+                      ]}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

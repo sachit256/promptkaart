@@ -558,9 +558,6 @@ export default function ProfileScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity style={styles.settingsButton}>
-          <Settings size={20} color={colors.textSecondary} />
-        </TouchableOpacity>
       </View>
 
       {/* Content */}

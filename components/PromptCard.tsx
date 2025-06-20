@@ -8,6 +8,8 @@ import {
   Dimensions,
   ScrollView,
   Alert,
+  Modal,
+  StatusBar,
 } from 'react-native';
 import {
   Heart,
@@ -21,6 +23,7 @@ import {
   CreditCard as Edit,
   ChartBar as BarChart3,
   Brain,
+  X,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,7 +33,6 @@ import { supabase } from '@/lib/supabase';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 32;
-const IMAGE_HEIGHT = 200;
 
 interface PromptCardProps {
   prompt: Prompt;
@@ -52,24 +54,13 @@ export function PromptCard({
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAvatarLoading, setIsAvatarLoading] = useState(true);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
 
   const CHAR_LIMIT = 150;
   const shouldShowReadMore = prompt.prompt.length > CHAR_LIMIT;
   const displayText = isExpanded
     ? prompt.prompt
     : prompt.prompt.substring(0, CHAR_LIMIT);
-
-  const handleNextImage = () => {
-    setCurrentImageIndex((prev) =>
-      prev === prompt.images.length - 1 ? 0 : prev + 1
-    );
-  };
-
-  const handlePrevImage = () => {
-    setCurrentImageIndex((prev) =>
-      prev === 0 ? prompt.images.length - 1 : prev - 1
-    );
-  };
 
   const handleCardPress = () => {
     router.push(`/prompt/${prompt.id}`);
@@ -115,6 +106,12 @@ export function PromptCard({
   const handleSharePress = (e: any) => {
     e.stopPropagation(); // Prevent card press when tapping share
     onShare?.(prompt.id);
+  };
+
+  const handleImagePress = (e: any, index: number) => {
+    e.stopPropagation(); // Prevent card press when tapping image
+    setCurrentImageIndex(index);
+    setImageModalVisible(true);
   };
 
   const styles = StyleSheet.create({
@@ -165,55 +162,23 @@ export function PromptCard({
       fontFamily: 'Inter-Regular',
       color: colors.textSecondary,
     },
-    imageContainer: {
-      position: 'relative',
-      height: IMAGE_HEIGHT,
-      marginHorizontal: 16,
-      borderRadius: 12,
-      overflow: 'hidden',
+    imageScrollView: {
+      marginTop: 4,
+      marginBottom: 12,
+    },
+    imageScrollViewContent: {
+      gap: 12,
+      paddingHorizontal: 16,
     },
     image: {
-      width: '100%',
-      height: '100%',
-    },
-    imageNavigation: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      justifyContent: 'center',
-      paddingHorizontal: 8,
-    },
-    navLeft: {
-      left: 0,
-    },
-    navRight: {
-      right: 0,
-    },
-    navButton: {
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      borderRadius: 16,
-      padding: 4,
-    },
-    imageIndicators: {
-      position: 'absolute',
-      bottom: 12,
-      left: 0,
-      right: 0,
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 6,
-    },
-    indicator: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    },
-    activeIndicator: {
-      backgroundColor: colors.primary,
+      width: CARD_WIDTH - 80,
+      height: CARD_WIDTH - 80,
+      borderRadius: 12,
+      backgroundColor: colors.surfaceVariant,
     },
     content: {
       padding: 16,
+      paddingTop: 4,
     },
     promptContainer: {
       marginBottom: 16,
@@ -332,6 +297,76 @@ export function PromptCard({
       fontFamily: 'Inter-SemiBold',
       marginLeft: 4,
     },
+    // Modal styles
+    modalContainer: {
+      flex: 1,
+      backgroundColor: 'black',
+    },
+    modalHeader: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingTop: StatusBar.currentHeight || 44,
+      paddingBottom: 16,
+      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    },
+    modalImageContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalImage: {
+      width: width,
+      height: width, // Square aspect ratio for modal
+      resizeMode: 'contain',
+    },
+    modalNavigation: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      paddingHorizontal: 20,
+    },
+    modalNavButton: {
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      borderRadius: 25,
+      padding: 12,
+    },
+    modalIndicators: {
+      position: 'absolute',
+      bottom: 100,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    modalIndicator: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    },
+    modalActiveIndicator: {
+      backgroundColor: 'white',
+    },
+    closeButton: {
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      borderRadius: 20,
+      padding: 8,
+    },
+    navLeft: {
+      left: 0,
+    },
+    navRight: {
+      right: 0,
+    },
   });
 
   // Use provided bookmark count or default to 0
@@ -350,183 +385,227 @@ export function PromptCard({
   };
 
   return (
-    <TouchableOpacity onPress={handleCardPress} activeOpacity={0.98}>
-      <View style={styles.card}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.avatarContainer}>
-            {isAvatarLoading && (
-              <View style={[styles.avatar, styles.avatarPlaceholder]} />
-            )}
-            <Image
-              source={{ uri: prompt.author.avatar }}
-              style={[
-                styles.avatar,
-                isAvatarLoading && { position: 'absolute' },
-              ]}
-              onLoad={() => setIsAvatarLoading(false)}
-            />
-          </View>
-          <View style={styles.authorInfo}>
-            <Text style={styles.authorName}>{prompt.author.name}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.category}>{prompt.category}</Text>
-              <View
+    <>
+      <TouchableOpacity onPress={handleCardPress} activeOpacity={0.98}>
+        <View style={styles.card}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.avatarContainer}>
+              {isAvatarLoading && (
+                <View style={[styles.avatar, styles.avatarPlaceholder]} />
+              )}
+              <Image
+                source={{ uri: prompt.author.avatar }}
                 style={[
-                  styles.aiSourceBadge,
-                  { backgroundColor: getAISourceColor(prompt.ai_source) + '20' },
+                  styles.avatar,
+                  isAvatarLoading && { position: 'absolute' },
                 ]}
-              >
-                <Brain size={10} color={getAISourceColor(prompt.ai_source)} />
-                <Text
+                onLoad={() => setIsAvatarLoading(false)}
+              />
+            </View>
+            <View style={styles.authorInfo}>
+              <Text style={styles.authorName}>{prompt.author.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.category}>{prompt.category}</Text>
+                <View
                   style={[
-                    styles.aiSourceText,
-                    { color: getAISourceColor(prompt.ai_source) },
+                    styles.aiSourceBadge,
+                    { backgroundColor: getAISourceColor(prompt.ai_source) + '20' },
                   ]}
                 >
-                  {prompt.ai_source.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-          </View>
-          {isOwner && (
-            <View style={styles.headerActions}>
-              <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-                <Edit size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.editButton}
-                onPress={handleViewActivity}
-              >
-                <BarChart3 size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Images Carousel */}
-        <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: prompt.images[currentImageIndex] }}
-            style={styles.image}
-            resizeMode="cover"
-          />
-
-          {prompt.images.length > 1 && (
-            <>
-              <TouchableOpacity
-                style={[styles.imageNavigation, styles.navLeft]}
-                onPress={handlePrevImage}
-              >
-                <View style={styles.navButton}>
-                  <ChevronLeft size={20} color="white" />
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.imageNavigation, styles.navRight]}
-                onPress={handleNextImage}
-              >
-                <View style={styles.navButton}>
-                  <ChevronRight size={20} color="white" />
-                </View>
-              </TouchableOpacity>
-
-              <View style={styles.imageIndicators}>
-                {prompt.images.map((_, index) => (
-                  <View
-                    key={index}
+                  <Brain size={10} color={getAISourceColor(prompt.ai_source)} />
+                  <Text
                     style={[
-                      styles.indicator,
-                      index === currentImageIndex && styles.activeIndicator,
+                      styles.aiSourceText,
+                      { color: getAISourceColor(prompt.ai_source) },
                     ]}
-                  />
-                ))}
+                  >
+                    {prompt.ai_source.toUpperCase()}
+                  </Text>
+                </View>
               </View>
-            </>
-          )}
-        </View>
-
-        {/* Content */}
-        <View style={styles.content}>
-          {/* Prompt Text with Inline Read More/Less */}
-          <View style={styles.promptContainer}>
-            <Text style={styles.promptText}>
-              {displayText}
-              {!isExpanded && shouldShowReadMore && '...'}
-            </Text>
-            {shouldShowReadMore && (
-              <TouchableOpacity
-                style={styles.readMoreButton}
-                onPress={toggleReadMore}
-              >
-                <Text style={styles.readMoreText}>
-                  {isExpanded ? 'Show less' : 'Read more'}
-                </Text>
-                {isExpanded ? (
-                  <ChevronUp size={16} color={colors.textSecondary} />
-                ) : (
-                  <ChevronDown size={16} color={colors.textSecondary} />
-                )}
-              </TouchableOpacity>
+            </View>
+            {isOwner && (
+              <View style={styles.headerActions}>
+                <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
+                  <Edit size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={handleViewActivity}
+                >
+                  <BarChart3 size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
-          <View style={styles.tagsContainer}>
-            {prompt.tags.slice(0, 3).map((tag, index) => (
-              <View key={index} style={styles.tag}>
-                <Text style={styles.tagText}>#{tag}</Text>
-              </View>
-            ))}
-          </View>
+          {/* Images Carousel */}
+          {prompt.images && prompt.images.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.imageScrollView}
+              contentContainerStyle={styles.imageScrollViewContent}
+            >
+              {prompt.images.map((imageUrl, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={(e) => handleImagePress(e, index)}
+                  activeOpacity={0.9}
+                >
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.image}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
 
-          {/* Actions */}
-          <View style={styles.actions}>
-            <View style={styles.leftActions}>
-              <TouchableOpacity
-                style={[styles.actionButton, prompt.isLiked && styles.likedButton]}
-                onPress={handleLikePress}
-              >
-                <Heart
-                  size={16}
-                  color={prompt.isLiked ? colors.error : colors.textSecondary}
-                  fill={prompt.isLiked ? colors.error : 'none'}
-                />
-                <Text style={[styles.actionText, prompt.isLiked && styles.likedText]}>
-                  {prompt.likes}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.actionButton}>
-                <MessageCircle size={16} color={colors.textSecondary} />
-                <Text style={styles.actionText}>{prompt.comments}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={handleSharePress}
-              >
-                <Share size={16} color={colors.textSecondary} />
-                <Text style={styles.actionText}>{prompt.shares}</Text>
-              </TouchableOpacity>
+          {/* Content */}
+          <View style={styles.content}>
+            {/* Prompt Text with Inline Read More/Less */}
+            <View style={styles.promptContainer}>
+              <Text style={styles.promptText}>
+                {displayText}
+                {!isExpanded && shouldShowReadMore && '...'}
+              </Text>
+              {shouldShowReadMore && (
+                <TouchableOpacity
+                  style={styles.readMoreButton}
+                  onPress={toggleReadMore}
+                >
+                  <Text style={styles.readMoreText}>
+                    {isExpanded ? 'Show less' : 'Read more'}
+                  </Text>
+                  {isExpanded ? (
+                    <ChevronUp size={16} color={colors.textSecondary} />
+                  ) : (
+                    <ChevronDown size={16} color={colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.actionButtonBookmark,
-                prompt.isBookmarked && styles.bookmarkedButton,
-              ]}
-              onPress={handleBookmarkPress}
-            >
-              <Bookmark
-                size={16}
-                color={prompt.isBookmarked ? colors.primary : colors.textSecondary}
-                fill={prompt.isBookmarked ? colors.primary : 'none'}
-              />
-            </TouchableOpacity>
+            <View style={styles.tagsContainer}>
+              {prompt.tags.slice(0, 3).map((tag, index) => (
+                <View key={index} style={styles.tag}>
+                  <Text style={styles.tagText}>#{tag}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Actions */}
+            <View style={styles.actions}>
+              <View style={styles.leftActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, prompt.isLiked && styles.likedButton]}
+                  onPress={handleLikePress}
+                >
+                  <Heart
+                    size={16}
+                    color={prompt.isLiked ? colors.error : colors.textSecondary}
+                    fill={prompt.isLiked ? colors.error : 'none'}
+                  />
+                  <Text style={[styles.actionText, prompt.isLiked && styles.likedText]}>
+                    {prompt.likes}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionButton}>
+                  <MessageCircle size={16} color={colors.textSecondary} />
+                  <Text style={styles.actionText}>{prompt.comments}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={handleSharePress}
+                >
+                  <Share size={16} color={colors.textSecondary} />
+                  <Text style={styles.actionText}>{prompt.shares}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.actionButtonBookmark,
+                  prompt.isBookmarked && styles.bookmarkedButton,
+                ]}
+                onPress={handleBookmarkPress}
+              >
+                <Bookmark
+                  size={16}
+                  color={prompt.isBookmarked ? colors.primary : colors.textSecondary}
+                  fill={prompt.isBookmarked ? colors.primary : 'none'}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setImageModalVisible(false)}
+            >
+              <X size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalImageContainer}>
+            <Image
+              source={{ uri: prompt.images[currentImageIndex] }}
+              style={styles.modalImage}
+              resizeMode="contain"
+            />
+
+            {prompt.images.length > 1 && (
+              <>
+                <TouchableOpacity
+                  style={[styles.modalNavigation, styles.navLeft]}
+                  onPress={() => setCurrentImageIndex(prev => prev === 0 ? prompt.images.length - 1 : prev - 1)}
+                >
+                  <View style={styles.modalNavButton}>
+                    <ChevronLeft size={24} color="white" />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalNavigation, styles.navRight]}
+                  onPress={() => setCurrentImageIndex(prev => prev === prompt.images.length - 1 ? 0 : prev + 1)}
+                >
+                  <View style={styles.modalNavButton}>
+                    <ChevronRight size={24} color="white" />
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.modalIndicators}>
+                  {prompt.images.map((_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.modalIndicator,
+                        index === currentImageIndex && styles.modalActiveIndicator,
+                      ]}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
