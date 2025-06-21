@@ -12,9 +12,6 @@ export function usePrompts() {
 
   const transformDatabasePost = (dbPost: DatabasePost, userLikes: string[] = [], userBookmarks: string[] = [], bookmarkCount: number = 0): Prompt => {
     // Debug logging to understand the data structure
-    console.log('Transforming post:', dbPost.id);
-    console.log('Profile data:', dbPost.profiles);
-    console.log('User ID:', dbPost.user_id);
     
     return {
       id: dbPost.id,
@@ -43,8 +40,6 @@ export function usePrompts() {
       setLoading(true);
       setError(null);
       
-      console.log('Fetching prompts...');
-
       // Fetch posts with author profiles
       const { data: posts, error: postsError } = await supabase
         .from('posts')
@@ -63,14 +58,13 @@ export function usePrompts() {
         throw postsError;
       }
       
-      console.log('Fetched posts:', posts?.length, 'posts');
       if (posts && posts.length > 0) {
-        console.log('Sample post data:', {
-          id: posts[0].id,
-          user_id: posts[0].user_id,
-          profiles: posts[0].profiles,
-          comments_count: posts[0].comments_count
-        });
+        // console.log('Sample post data:', {
+        //   id: posts[0].id,
+        //   user_id: posts[0].user_id,
+        //   profiles: posts[0].profiles,
+        //   comments_count: posts[0].comments_count
+        // });
       }
 
       // Fetch bookmark counts for all posts

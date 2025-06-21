@@ -7,6 +7,7 @@ import { ArrowLeft, Eye, EyeOff, Mail, Lock, Sparkles, Brain, Zap } from 'lucide
 import { UserCheck } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAvatar } from '@/contexts/AvatarContext';
+import { AnimatedLoader } from '@/components/AnimatedLoader';
 
 export default function AuthScreen() {
   const { colors } = useTheme();
@@ -377,6 +378,10 @@ export default function AuthScreen() {
       marginLeft: 4,
     },
   });
+
+  if (loading) {
+    return <AnimatedLoader />;
+  }
 
   return (
     <View style={styles.container}>

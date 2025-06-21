@@ -8,6 +8,8 @@ import { PromptCard } from '@/components/PromptCard';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Prompt } from '@/types/prompt';
+import * as Haptics from 'expo-haptics';
+import { AnimatedLoader } from '@/components/AnimatedLoader';
 
 export default function HomeScreen() {
   const { colors, theme, toggleTheme } = useTheme();
@@ -42,7 +44,7 @@ export default function HomeScreen() {
       const transformedPrompts: Prompt[] = data.map((p: any) => ({
         id: p.id,
         prompt: p.prompt,
-        ai_source: ['chatgpt', 'grok', 'gemini'].includes(p.ai_source)
+        ai_source: ['chatgpt', 'grok', 'gemini', 'midjourney'].includes(p.ai_source)
           ? (p.ai_source as Prompt['ai_source'])
           : 'chatgpt',
         images: p.images,
@@ -144,29 +146,30 @@ export default function HomeScreen() {
         (payload) => {
           console.log('Likes change detected:', payload);
           
+          // Update likes count in real-time without full refresh
           setTimeout(() => {
             if (payload.eventType === 'INSERT' && payload.new.post_id) {
-            setPrompts(prev => prev.map(prompt => {
-              if (prompt.id === payload.new.post_id) {
-                return {
-                  ...prompt,
-                  likes: prompt.likes + 1,
-                  isLiked: payload.new.user_id === user?.id ? true : prompt.isLiked
-                };
-              }
-              return prompt;
-            }));
+              setPrompts(prev => prev.map(prompt => {
+                if (prompt.id === payload.new.post_id) {
+                  return {
+                    ...prompt,
+                    likes: prompt.likes + 1,
+                    isLiked: payload.new.user_id === user?.id ? true : prompt.isLiked
+                  };
+                }
+                return prompt;
+              }));
             } else if (payload.eventType === 'DELETE' && payload.old.post_id) {
-            setPrompts(prev => prev.map(prompt => {
-              if (prompt.id === payload.old.post_id) {
-                return {
-                  ...prompt,
-                  likes: Math.max(prompt.likes - 1, 0),
-                  isLiked: payload.old.user_id === user?.id ? false : prompt.isLiked
-                };
-              }
-              return prompt;
-            }));
+              setPrompts(prev => prev.map(prompt => {
+                if (prompt.id === payload.old.post_id) {
+                  return {
+                    ...prompt,
+                    likes: Math.max(prompt.likes - 1, 0),
+                    isLiked: payload.old.user_id === user?.id ? false : prompt.isLiked
+                  };
+                }
+                return prompt;
+              }));
             }
           }, 100);
         }
@@ -274,6 +277,9 @@ export default function HomeScreen() {
       const newLikedState = !prompt.isLiked;
       const newLikesCount = newLikedState ? prompt.likes + 1 : prompt.likes - 1;
 
+      // Add haptic feedback for better UX
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
       // Update UI immediately
       setPrompts(prev => prev.map(p => 
         p.id === promptId 
@@ -506,18 +512,8 @@ export default function HomeScreen() {
     },
   });
 
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Home</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading prompts...</Text>
-        </View>
-      </View>
-    );
+  if (loading) {
+    return <AnimatedLoader />;
   }
 
   if (error) {
@@ -527,10 +523,7 @@ export default function HomeScreen() {
           <Text style={styles.headerTitle}>Home</Text>
         </View>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Failed to load posts</Text>
-          <Text style={styles.errorDescription}>
-            Please check your connection and try again.
-          </Text>
+          <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={() => fetchPosts()} style={styles.retryButton}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>

@@ -39,7 +39,6 @@ interface PromptCardProps {
   onLike?: (id: string) => void;
   onShare?: (id: string) => void;
   onBookmark?: (id: string) => void;
-  bookmarkCount?: number;
 }
 
 export function PromptCard({
@@ -47,7 +46,6 @@ export function PromptCard({
   onLike,
   onShare,
   onBookmark,
-  bookmarkCount,
 }: PromptCardProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -55,6 +53,39 @@ export function PromptCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAvatarLoading, setIsAvatarLoading] = useState(true);
   const [imageModalVisible, setImageModalVisible] = useState(false);
+
+  // Helper function to determine if image is base64 or URL
+  const isBase64Image = (imageString: string) => {
+    if (!imageString) return false;
+    // Check for data URI format first
+    if (imageString.startsWith('data:image/')) {
+      return true;
+    }
+    
+    // Check if it's a URL (contains protocol or starts with http/https)
+    if (imageString.startsWith('http://') || imageString.startsWith('https://') || imageString.includes('://')) {
+      return false;
+    }
+    
+    // For pure base64 strings (without data URI prefix), check more strictly
+    // Base64 strings should be much longer and contain only valid base64 characters
+    if (imageString.length > 100 && /^[A-Za-z0-9+/]+=*$/.test(imageString)) {
+      return true;
+    }
+    
+    return false;
+  };
+
+  // Helper function to get proper image source
+  const getImageSource = (imageString: string) => {
+    if (isBase64Image(imageString)) {
+      // If it's base64, use it directly
+      return imageString.startsWith('data:image/') ? imageString : `data:image/jpeg;base64,${imageString}`;
+    } else {
+      // If it's a URL, use it as is
+      return imageString;
+    }
+  };
 
   const CHAR_LIMIT = 150;
   const shouldShowReadMore = prompt.prompt.length > CHAR_LIMIT;
@@ -369,9 +400,6 @@ export function PromptCard({
     },
   });
 
-  // Use provided bookmark count or default to 0
-  const displayBookmarkCount = bookmarkCount || 0;
-
   // Check if current user owns this prompt
   const isOwner = user?.id === prompt.author.id;
 
@@ -380,6 +408,7 @@ export function PromptCard({
       case 'chatgpt': return '#10A37F';
       case 'gemini': return '#4285F4';
       case 'grok': return '#1DA1F2';
+      case 'midjourney': return '#7C3AED';
       default: return colors.primary;
     }
   };
@@ -455,7 +484,7 @@ export function PromptCard({
                   activeOpacity={0.9}
                 >
                   <Image
-                    source={{ uri: imageUrl }}
+                    source={{ uri: getImageSource(imageUrl) }}
                     style={styles.image}
                     resizeMode="cover"
                   />
@@ -565,7 +594,7 @@ export function PromptCard({
 
           <View style={styles.modalImageContainer}>
             <Image
-              source={{ uri: prompt.images[currentImageIndex] }}
+              source={{ uri: getImageSource(prompt.images[currentImageIndex]) }}
               style={styles.modalImage}
               resizeMode="contain"
             />

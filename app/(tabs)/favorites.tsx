@@ -6,8 +6,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Heart, Filter, CircleAlert as AlertCircle } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { PromptCard } from '@/components/PromptCard';
+import { AnimatedLoader } from '@/components/AnimatedLoader';
 import { supabase } from '@/lib/supabase';
 import { Prompt } from '@/types/prompt';
+import * as Haptics from 'expo-haptics';
 
 type BookmarkedPrompt = {
   id: string;
@@ -273,6 +275,19 @@ export default function FavoritesScreen() {
       const prompt = favoritePrompts.find(p => p.id === promptId);
       if (!prompt) return;
 
+      const newLikedState = !prompt.isLiked;
+      const newLikesCount = newLikedState ? prompt.likes + 1 : prompt.likes - 1;
+
+      // Add haptic feedback for better UX
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Optimistic update - update UI immediately
+      setFavoritePrompts(prev => prev.map(p => 
+        p.id === promptId 
+          ? { ...p, isLiked: newLikedState, likes: newLikesCount }
+          : p
+      ));
+
       if (prompt.isLiked) {
         // Unlike
         const { error } = await supabase
@@ -281,7 +296,15 @@ export default function FavoritesScreen() {
           .eq('user_id', user.id)
           .eq('post_id', promptId);
 
-        if (error) throw error;
+        if (error) {
+          // Revert optimistic update on error
+          setFavoritePrompts(prev => prev.map(p => 
+            p.id === promptId 
+              ? { ...p, isLiked: prompt.isLiked, likes: prompt.likes }
+              : p
+          ));
+          throw error;
+        }
       } else {
         // Like
         const { error } = await supabase
@@ -291,10 +314,17 @@ export default function FavoritesScreen() {
             post_id: promptId
           });
 
-        if (error) throw error;
+        if (error) {
+          // Revert optimistic update on error
+          setFavoritePrompts(prev => prev.map(p => 
+            p.id === promptId 
+              ? { ...p, isLiked: prompt.isLiked, likes: prompt.likes }
+              : p
+          ));
+          throw error;
+        }
       }
       
-      // Let real-time handle the update
     } catch (err) {
       console.error('Error toggling like:', err);
     }
@@ -389,18 +419,7 @@ export default function FavoritesScreen() {
       paddingTop: 16,
       paddingBottom: 140, // Fixed padding for floating tab bar
     },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingTop: 100,
-    },
-    loadingText: {
-      fontSize: 16,
-      fontFamily: 'Inter-Regular',
-      color: colors.textSecondary,
-      marginTop: 16,
-    },
+
     errorContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -486,10 +505,7 @@ export default function FavoritesScreen() {
             <Filter size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading favorites...</Text>
-        </View>
+        <AnimatedLoader fullScreen={false} />
       </View>
     );
   }

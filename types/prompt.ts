@@ -1,7 +1,7 @@
 export interface Prompt {
   id: string;
   prompt: string;
-  ai_source: 'chatgpt' | 'grok' | 'gemini';
+  ai_source: 'chatgpt' | 'grok' | 'gemini' | 'midjourney';
   images: string[];
   category: string;
   tags: string[];
@@ -38,7 +38,7 @@ export interface DatabasePost {
   id: string;
   user_id: string;
   prompt: string;
-  ai_source: 'chatgpt' | 'grok' | 'gemini';
+  ai_source: 'chatgpt' | 'grok' | 'gemini' | 'midjourney';
   images: string[];
   category: string;
   tags: string[];

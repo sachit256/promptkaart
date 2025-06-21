@@ -9,6 +9,7 @@ import { CommentCard } from '@/components/CommentCard';
 import { useComments } from '@/hooks/useComments';
 import { supabase } from '@/lib/supabase';
 import { Prompt } from '@/types/prompt';
+import { AnimatedLoader } from '@/components/AnimatedLoader';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 300;
@@ -42,6 +43,39 @@ export default function PromptDetailScreen() {
   
   const { comments, loading: commentsLoading, addComment, toggleCommentLike } = useComments(id as string);
 
+  // Helper function to determine if image is base64 or URL
+  const isBase64Image = (imageString: string) => {
+    if (!imageString) return false;
+    // Check for data URI format first
+    if (imageString.startsWith('data:image/')) {
+      return true;
+    }
+    
+    // Check if it's a URL (contains protocol or starts with http/https)
+    if (imageString.startsWith('http://') || imageString.startsWith('https://') || imageString.includes('://')) {
+      return false;
+    }
+    
+    // For pure base64 strings (without data URI prefix), check more strictly
+    // Base64 strings should be much longer and contain only valid base64 characters
+    if (imageString.length > 100 && /^[A-Za-z0-9+/]+=*$/.test(imageString)) {
+      return true;
+    }
+    
+    return false;
+  };
+
+  // Helper function to get proper image source
+  const getImageSource = (imageString: string) => {
+    if (isBase64Image(imageString)) {
+      // If it's base64, use it directly
+      return imageString.startsWith('data:image/') ? imageString : `data:image/jpeg;base64,${imageString}`;
+    } else {
+      // If it's a URL, use it as is
+      return imageString;
+    }
+  };
+
   const fetchPrompt = async () => {
     try {
       setLoading(true);
@@ -63,7 +97,7 @@ export default function PromptDetailScreen() {
       const transformedPrompt: Prompt = {
         id: typedData.id,
         prompt: typedData.prompt,
-        ai_source: ['chatgpt', 'grok', 'gemini'].includes(typedData.ai_source) ? typedData.ai_source as Prompt['ai_source'] : 'chatgpt',
+        ai_source: ['chatgpt', 'grok', 'gemini', 'midjourney'].includes(typedData.ai_source) ? typedData.ai_source as Prompt['ai_source'] : 'chatgpt',
         images: typedData.images,
         category: typedData.category,
         tags: typedData.tags,
@@ -281,6 +315,7 @@ export default function PromptDetailScreen() {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
+     
       backgroundColor: colors.background,
     },
     header: {
@@ -639,10 +674,7 @@ export default function PromptDetailScreen() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Prompt Details</Text>
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading prompt...</Text>
-        </View>
+        <AnimatedLoader fullScreen={false} />
       </View>
     );
   }
@@ -704,7 +736,7 @@ export default function PromptDetailScreen() {
                   activeOpacity={0.9}
                 >
                   <Image
-                    source={{ uri: imageUrl }}
+                    source={{ uri: getImageSource(imageUrl) }}
                     style={styles.image}
                     resizeMode="cover"
                   />
@@ -891,7 +923,7 @@ export default function PromptDetailScreen() {
 
           <View style={styles.modalImageContainer}>
             <Image
-              source={{ uri: prompt.images[currentImageIndex] }}
+              source={{ uri: getImageSource(prompt.images[currentImageIndex]) }}
               style={styles.modalImage}
               resizeMode="contain"
             />

@@ -18,9 +18,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
-import { ArrowLeft, Sparkles, Brain, Zap, Image as ImageIcon, Tag, Send, Loader, CircleCheck as CheckCircle, X, Upload, Camera, Plus, CircleAlert as AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, Sparkles, Brain, Zap, Image as ImageIcon, Tag, Send, Loader, CircleCheck as CheckCircle, X, Upload, Camera, Plus, CircleAlert as AlertCircle, FolderOpen, Palette } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { useLocalSearchParams } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
@@ -29,6 +31,7 @@ const AI_SOURCES = [
   { id: 'chatgpt', name: 'ChatGPT', color: '#10A37F', icon: Brain },
   { id: 'gemini', name: 'Gemini', color: '#4285F4', icon: Sparkles },
   { id: 'grok', name: 'Grok', color: '#1DA1F2', icon: Zap },
+  { id: 'midjourney', name: 'Midjourney', color: '#7C3AED', icon: Palette },
 ] as const;
 
 const CATEGORIES = [
@@ -47,6 +50,8 @@ const CATEGORIES = [
 interface UploadedImage {
   id: string;
   uri: string;
+  originalUri?: string; // Keep original URI for thumbnail display
+  uploadedUrl?: string; // Store the uploaded Supabase URL
   name: string;
   type: string;
   size: number;
@@ -59,11 +64,14 @@ export default function CreatePostScreen() {
   const { user, isLoggedIn } = useAuth();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  
+  // Web file input ref
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Form state
   const [prompt, setPrompt] = useState(params.prefilledPrompt as string || '');
-  const [selectedAiSource, setSelectedAiSource] = useState<'chatgpt' | 'gemini' | 'grok'>(
-    (params.prefilledAiSource as 'chatgpt' | 'gemini' | 'grok') || 'chatgpt'
+  const [selectedAiSource, setSelectedAiSource] = useState<'chatgpt' | 'gemini' | 'grok' | 'midjourney'>(
+    (params.prefilledAiSource as 'chatgpt' | 'gemini' | 'grok' | 'midjourney') || 'chatgpt'
   );
   const [selectedCategory, setSelectedCategory] = useState(params.prefilledCategory as string || 'Art & Design');
   const [tags, setTags] = useState<string[]>(
@@ -76,12 +84,11 @@ export default function CreatePostScreen() {
   
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadingImages, setUploadingImages] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadingCount, setUploadingCount] = useState(0);
+
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -125,12 +132,26 @@ export default function CreatePostScreen() {
     );
     sparkleLoop.start();
 
-    return () => sparkleLoop.stop();
+    return () => {
+      sparkleLoop.stop();
+      // Cleanup object URLs on unmount
+      if (Platform.OS === 'web') {
+        uploadedImages.forEach(image => {
+          if (image.uri.startsWith('blob:')) {
+            URL.revokeObjectURL(image.uri);
+          }
+        });
+      }
+      // Remove file input from DOM
+      if (fileInputRef.current && Platform.OS === 'web') {
+        document.body.removeChild(fileInputRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
     // Pulse animation for submit button when form is valid
-    if (isFormValid() && !isSubmitting && !uploadingImages) {
+    if (isFormValid() && !isSubmitting) {
       const pulseLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -148,11 +169,11 @@ export default function CreatePostScreen() {
       pulseLoop.start();
       return () => pulseLoop.stop();
     }
-  }, [prompt, uploadedImages, imageUrls, isSubmitting, uploadingImages]);
+  }, [prompt, uploadedImages, imageUrls, isSubmitting]);
 
   // Animate blocking overlay when uploading
   useEffect(() => {
-    if (uploadingImages || isSubmitting) {
+    if (isSubmitting) {
       Animated.timing(blockingAnim, {
         toValue: 1,
         duration: 300,
@@ -165,7 +186,7 @@ export default function CreatePostScreen() {
         useNativeDriver: true,
       }).start();
     }
-  }, [uploadingImages, isSubmitting]);
+  }, [isSubmitting]);
 
   const isFormValid = () => {
     return prompt.trim().length > 0;
@@ -234,26 +255,282 @@ export default function CreatePostScreen() {
 
   const uploadImageToStorage = async (imageUri: string, fileName: string): Promise<string> => {
     try {
-      console.log('Image would be uploaded:', fileName);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return imageUri;
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      // Generate a unique file path
+      const fileExt = (fileName.split('.').pop() || 'jpg').toLowerCase();
+      const contentType = fileExt === 'jpg' ? 'image/jpeg' : `image/${fileExt}`;
+      const uniqueFileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+      
+      let fileData: any;
+      
+      if (Platform.OS === 'web') {
+        const response = await fetch(imageUri);
+        fileData = await response.blob();
+      } else {
+        const base64Data = await FileSystem.readAsStringAsync(imageUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        fileData = decode(base64Data);
+      }
+
+      // Upload to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('post-images')
+        .upload(uniqueFileName, fileData, {
+          contentType: contentType,
+          upsert: false,
+        });
+
+      if (error) {
+        console.error('Supabase storage upload error:', error);
+        throw new Error(`Storage upload failed: ${error.message}`);
+      }
+
+      if (!data?.path) {
+        throw new Error('Upload successful but no path returned');
+      }
+
+      // For private buckets, create a signed URL
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from('post-images')
+        .createSignedUrl(data.path, 31536000); // 1 year expiry
+
+      if (signedUrlError) {
+        console.error('Error creating signed URL:', signedUrlError);
+        throw new Error(`Failed to create signed URL: ${signedUrlError.message}`);
+      }
+      
+      const signedUrl = signedUrlData?.signedUrl;
+      if (!signedUrl) {
+        throw new Error('Invalid signed URL generated');
+      }
+
+      return signedUrl;
     } catch (error) {
       console.error('Error uploading image:', error);
-      throw error;
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      throw error instanceof Error ? error : new Error('Unknown upload error');
     }
   };
 
-  const updateUploadProgress = () => {
-    const totalImages = uploadedImages.length;
-    const completedImages = uploadedImages.filter(img => !img.uploading).length;
-    const progress = totalImages > 0 ? (completedImages / totalImages) * 100 : 0;
-    setUploadProgress(progress);
-    setUploadingCount(totalImages - completedImages);
+  // Web file upload function
+  const pickImageFromBrowser = () => {
+    if (Platform.OS !== 'web') return;
+    
+    if ((uploadedImages.length + imageUrls.length) >= 5) {
+      Alert.alert('Limit Reached', 'You can only upload up to 5 images.');
+      return;
+    }
+
+    // Create file input if it doesn't exist
+    if (!fileInputRef.current) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      fileInputRef.current = input;
+    }
+
+    const input = fileInputRef.current;
+    
+    input.onchange = async (event: any) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      const remainingSlots = 5 - (uploadedImages.length + imageUrls.length);
+      const filesToProcess = Array.from(files).slice(0, remainingSlots);
+
+      if (filesToProcess.length === 0) {
+        Alert.alert('Limit Reached', 'You can only upload up to 5 images.');
+        return;
+      }
+
+      const newImages: UploadedImage[] = [];
+
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const file = filesToProcess[i] as File;
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          Alert.alert('Invalid File', `${file.name} is not a valid image file.`);
+          continue;
+        }
+
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          Alert.alert('File Too Large', `${file.name} is too large. Maximum file size is 10MB.`);
+          continue;
+        }
+
+        const imageId = (Date.now() + i).toString();
+        
+        // Create object URL for preview
+        const objectUrl = URL.createObjectURL(file);
+        
+        const newImage: UploadedImage = {
+          id: imageId,
+          uri: objectUrl,
+          originalUri: objectUrl, // Keep object URL for thumbnail
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          uploading: true,
+          uploadProgress: 0,
+        };
+
+        newImages.push(newImage);
+      }
+
+      // Add images to UI immediately for preview
+      setUploadedImages(prev => [...prev, ...newImages]);
+
+      // Upload in background without blocking UI
+      newImages.forEach(async (image) => {
+        const progressInterval = setInterval(() => {
+          setUploadedImages(prev => prev.map(img => 
+            img.id === image.id 
+              ? { ...img, uploadProgress: Math.min((img.uploadProgress || 0) + 10, 85) }
+              : img
+          ));
+        }, 500);
+
+        try {
+          const uploadedUrl = await uploadImageToStorage(image.uri, image.name);
+          
+          clearInterval(progressInterval);
+          
+          setUploadedImages(prev => prev.map(img => 
+            img.id === image.id 
+              ? { ...img, uploading: false, uploadProgress: 100, uploadedUrl }
+              : img
+          ));
+        } catch (error) {
+          clearInterval(progressInterval);
+          console.error('Error uploading image:', error);
+          
+          setUploadedImages(prev => prev.filter(img => img.id !== image.id));
+          // Clean up object URL
+          URL.revokeObjectURL(image.uri);
+          
+          Alert.alert('Upload Failed', `Failed to upload ${image.name}. Please try again.`);
+        }
+      });
+
+      // Reset file input
+      input.value = '';
+    };
+
+    input.click();
   };
 
-  useEffect(() => {
-    updateUploadProgress();
-  }, [uploadedImages]);
+  // Drag and drop handlers for web
+  const handleDragOver = (e: any) => {
+    if (Platform.OS !== 'web') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: any) => {
+    if (Platform.OS !== 'web') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: any) => {
+    if (Platform.OS !== 'web') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    const imageFiles = files.filter((file: any) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      Alert.alert('Invalid Files', 'Please drop only image files.');
+      return;
+    }
+
+    if ((uploadedImages.length + imageUrls.length) >= 5) {
+      Alert.alert('Limit Reached', 'You can only upload up to 5 images.');
+      return;
+    }
+
+    const remainingSlots = 5 - (uploadedImages.length + imageUrls.length);
+    const filesToProcess = imageFiles.slice(0, remainingSlots);
+
+    const newImages: UploadedImage[] = [];
+
+    for (let i = 0; i < filesToProcess.length; i++) {
+      const file = filesToProcess[i] as File;
+      
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        Alert.alert('File Too Large', `${file.name} is too large. Maximum file size is 10MB.`);
+        continue;
+      }
+
+      const imageId = (Date.now() + i).toString();
+      
+      // Create object URL for preview
+      const objectUrl = URL.createObjectURL(file);
+      
+      const newImage: UploadedImage = {
+        id: imageId,
+        uri: objectUrl,
+        originalUri: objectUrl, // Keep object URL for thumbnail
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        uploading: true,
+        uploadProgress: 0,
+      };
+
+      newImages.push(newImage);
+    }
+
+    // Add images to UI immediately for preview
+    setUploadedImages(prev => [...prev, ...newImages]);
+
+    // Upload in background without blocking UI
+    newImages.forEach(async (image) => {
+      const progressInterval = setInterval(() => {
+        setUploadedImages(prev => prev.map(img => 
+          img.id === image.id 
+            ? { ...img, uploadProgress: Math.min((img.uploadProgress || 0) + 10, 85) }
+            : img
+        ));
+      }, 500);
+
+      try {
+        const uploadedUrl = await uploadImageToStorage(image.uri, image.name);
+        
+        clearInterval(progressInterval);
+        
+        setUploadedImages(prev => prev.map(img => 
+          img.id === image.id 
+            ? { ...img, uploading: false, uploadProgress: 100, uploadedUrl }
+            : img
+        ));
+      } catch (error) {
+        clearInterval(progressInterval);
+        console.error('Error uploading image:', error);
+        
+        setUploadedImages(prev => prev.filter(img => img.id !== image.id));
+        // Clean up object URL
+        URL.revokeObjectURL(image.uri);
+        
+        Alert.alert('Upload Failed', `Failed to upload ${image.name}. Please try again.`);
+      }
+    });
+  };
 
   const pickImage = async () => {
     try {
@@ -280,8 +557,6 @@ export default function CreatePostScreen() {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setUploadingImages(true);
-        
         const newImages: UploadedImage[] = result.assets.map((asset, index) => {
           const imageId = (Date.now() + index).toString();
           
@@ -305,6 +580,7 @@ export default function CreatePostScreen() {
           return {
             id: imageId,
             uri: asset.uri,
+            originalUri: asset.uri, // Keep original for thumbnail
             name: asset.fileName || `image_${imageId}.${fileExtension}`,
             type: asset.type || `image/${fileExtension === 'jpg' ? 'jpeg' : fileExtension}`,
             size: asset.fileSize || 0,
@@ -313,47 +589,42 @@ export default function CreatePostScreen() {
           };
         });
 
+        // Add images to UI immediately for preview
         setUploadedImages(prev => [...prev, ...newImages]);
 
-        try {
-          const uploadPromises = newImages.map(async (image) => {
-            const progressInterval = setInterval(() => {
-              setUploadedImages(prev => prev.map(img => 
-                img.id === image.id 
-                  ? { ...img, uploadProgress: Math.min((img.uploadProgress || 0) + 15, 90) }
-                  : img
-              ));
-            }, 300);
+        // Upload in background without blocking UI
+        newImages.forEach(async (image) => {
+          const progressInterval = setInterval(() => {
+            setUploadedImages(prev => prev.map(img => 
+              img.id === image.id 
+                ? { ...img, uploadProgress: Math.min((img.uploadProgress || 0) + 10, 85) }
+                : img
+            ));
+          }, 500);
 
-            try {
-              const uploadedUrl = await uploadImageToStorage(image.uri, image.name);
-              
-              clearInterval(progressInterval);
-              
-              setUploadedImages(prev => prev.map(img => 
-                img.id === image.id 
-                  ? { ...img, uploading: false, uploadProgress: 100, uri: uploadedUrl }
-                  : img
-              ));
-            } catch (error) {
-              clearInterval(progressInterval);
-              console.error('Error uploading image:', error);
-              setUploadedImages(prev => prev.filter(img => img.id !== image.id));
-              throw error;
-            }
-          });
-
-          await Promise.all(uploadPromises);
-        } catch (error) {
-          Alert.alert('Upload Failed', 'Some images failed to upload. Please try again.');
-        } finally {
-          setUploadingImages(false);
-        }
+          try {
+            const uploadedUrl = await uploadImageToStorage(image.uri, image.name);
+            
+            clearInterval(progressInterval);
+            
+            setUploadedImages(prev => prev.map(img => 
+              img.id === image.id 
+                ? { ...img, uploading: false, uploadProgress: 100, uploadedUrl }
+                : img
+            ));
+          } catch (error) {
+            clearInterval(progressInterval);
+            console.error('Error uploading image:', error);
+            
+            setUploadedImages(prev => prev.filter(img => img.id !== image.id));
+            
+            Alert.alert('Upload Failed', `Failed to upload ${image.name}. Please try again.`);
+          }
+        });
       }
     } catch (error) {
       console.error('Error picking image:', error);
       Alert.alert('Error', 'Failed to pick image. Please try again.');
-      setUploadingImages(false);
     }
   };
 
@@ -385,6 +656,7 @@ export default function CreatePostScreen() {
         const newImage: UploadedImage = {
           id: imageId,
           uri: asset.uri,
+          originalUri: asset.uri, // Keep original for thumbnail
           name: `photo_${imageId}.jpg`,
           type: 'image/jpeg',
           size: asset.fileSize || 0,
@@ -392,45 +664,50 @@ export default function CreatePostScreen() {
           uploadProgress: 0,
         };
 
+        // Add image to UI immediately for preview
         setUploadedImages(prev => [...prev, newImage]);
 
-        try {
-          setUploadingImages(true);
-          
-          const progressInterval = setInterval(() => {
-            setUploadedImages(prev => prev.map(img => 
-              img.id === imageId 
-                ? { ...img, uploadProgress: Math.min((img.uploadProgress || 0) + 20, 90) }
-                : img
-            ));
-          }, 200);
+        // Upload in background without blocking UI
+        const progressInterval = setInterval(() => {
+          setUploadedImages(prev => prev.map(img => 
+            img.id === imageId 
+              ? { ...img, uploadProgress: Math.min((img.uploadProgress || 0) + 15, 85) }
+              : img
+          ));
+        }, 400);
 
+        try {
           const uploadedUrl = await uploadImageToStorage(asset.uri, newImage.name);
           
           clearInterval(progressInterval);
           
           setUploadedImages(prev => prev.map(img => 
             img.id === imageId 
-              ? { ...img, uploading: false, uploadProgress: 100, uri: uploadedUrl }
+              ? { ...img, uploading: false, uploadProgress: 100, uploadedUrl }
               : img
           ));
         } catch (error) {
+          clearInterval(progressInterval);
           console.error('Error uploading image:', error);
+          
           setUploadedImages(prev => prev.filter(img => img.id !== imageId));
           Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
-        } finally {
-          setUploadingImages(false);
         }
       }
     } catch (error) {
       console.error('Error taking photo:', error);
       Alert.alert('Error', 'Failed to take photo. Please try again.');
-      setUploadingImages(false);
     }
   };
 
   const removeUploadedImage = (imageId: string) => {
-    setUploadedImages(prev => prev.filter(img => img.id !== imageId));
+    setUploadedImages(prev => {
+      const imageToRemove = prev.find(img => img.id === imageId);
+      if (imageToRemove && Platform.OS === 'web' && imageToRemove.uri.startsWith('blob:')) {
+        URL.revokeObjectURL(imageToRemove.uri);
+      }
+      return prev.filter(img => img.id !== imageId);
+    });
   };
 
   const formatFileSize = (bytes: number) => {
@@ -506,11 +783,14 @@ export default function CreatePostScreen() {
 
     try {
       const allImages = [
-        ...uploadedImages.filter(img => !img.uploading).map(img => img.uri),
+        ...uploadedImages.filter(img => !img.uploading && img.uploadedUrl).map(img => img.uploadedUrl!),
         ...imageUrls
       ];
 
       const finalImages = allImages.length > 0 ? allImages : ['https://images.pexels.com/photos/2664947/pexels-photo-2664947.jpeg'];
+
+      console.log('All uploaded image URLs:', allImages);
+      console.log('Final images being saved:', finalImages);
 
       console.log('Submitting post with data:', {
         user_id: user!.id,
@@ -660,28 +940,33 @@ export default function CreatePostScreen() {
     },
     aiSourceContainer: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 12,
+      justifyContent: 'space-between',
     },
     aiSourceButton: {
-      flex: 1,
+      width: '48%',
       backgroundColor: colors.surface,
       borderRadius: 12,
       borderWidth: 2,
       borderColor: colors.border,
-      padding: 16,
+      padding: 12,
       alignItems: 'center',
+      minHeight: 80,
+      justifyContent: 'center',
     },
     aiSourceButtonActive: {
       borderColor: colors.primary,
       backgroundColor: colors.primary + '10',
     },
     aiSourceIcon: {
-      marginBottom: 8,
+      marginBottom: 6,
     },
     aiSourceText: {
-      fontSize: 14,
+      fontSize: 13,
       fontFamily: 'Inter-SemiBold',
       color: colors.text,
+      textAlign: 'center',
     },
     categoryContainer: {
       flexDirection: 'row',
@@ -772,6 +1057,11 @@ export default function CreatePostScreen() {
     imageUploadButtonActive: {
       borderColor: colors.primary,
       backgroundColor: colors.primary + '10',
+    },
+    imageUploadButtonDragOver: {
+      borderColor: colors.success,
+      backgroundColor: colors.success + '10',
+      transform: [{ scale: 1.02 }],
     },
     imageUploadIcon: {
       marginBottom: 8,
@@ -1024,36 +1314,35 @@ export default function CreatePostScreen() {
       lineHeight: 24,
       marginBottom: 20,
     },
-    blockingProgressContainer: {
-      width: '100%',
-      marginBottom: 16,
-    },
-    blockingProgressBar: {
-      height: 6,
-      backgroundColor: colors.surfaceVariant,
-      borderRadius: 3,
-      overflow: 'hidden',
-      marginBottom: 8,
-    },
-    blockingProgressFill: {
-      height: '100%',
-      backgroundColor: colors.primary,
-      borderRadius: 3,
-    },
-    blockingProgressText: {
-      fontSize: 14,
-      fontFamily: 'Inter-Medium',
-      color: colors.textSecondary,
-      textAlign: 'center',
-    },
+
     blockingSpinner: {
       marginBottom: 16,
+    },
+    dragOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderStyle: 'dashed',
+      borderColor: colors.success,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 10,
+    },
+    dragOverlayText: {
+      fontSize: 16,
+      fontFamily: 'Inter-SemiBold',
+      marginTop: 12,
+      textAlign: 'center',
     },
   });
 
   const totalImages = uploadedImages.length + imageUrls.length;
   const hasUploadingImages = uploadedImages.some(img => img.uploading);
-  const isBlocked = uploadingImages || isSubmitting;
+  const isBlocked = isSubmitting; // Only block during submission, not image uploads
 
   return (
     <View style={styles.container}>
@@ -1062,9 +1351,9 @@ export default function CreatePostScreen() {
         <TouchableOpacity 
           onPress={() => router.back()} 
           style={styles.backButton}
-          disabled={isBlocked}
+          disabled={isSubmitting}
         >
-          <ArrowLeft size={20} color={isBlocked ? colors.textSecondary : colors.text} />
+                      <ArrowLeft size={20} color={isSubmitting ? colors.textSecondary : colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Create Prompt</Text>
         <View style={styles.aiIndicator}>
@@ -1137,49 +1426,14 @@ export default function CreatePostScreen() {
               },
             ]}
           >
-            {uploadingImages ? (
-              <>
-                <View style={styles.blockingIcon}>
-                  <Upload size={48} color={colors.primary} />
-                </View>
-                <Text style={styles.blockingTitle}>Uploading Images</Text>
-                <Text style={styles.blockingMessage}>
-                  Please wait while we upload your images. This may take a few moments.
-                </Text>
-                
-                {uploadProgress > 0 && (
-                  <View style={styles.blockingProgressContainer}>
-                    <View style={styles.blockingProgressBar}>
-                      <View
-                        style={[
-                          styles.blockingProgressFill,
-                          { width: `${uploadProgress}%` },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.blockingProgressText}>
-                      {uploadingCount > 0 
-                        ? `Uploading ${uploadingCount} image${uploadingCount > 1 ? 's' : ''}...`
-                        : 'Processing images...'
-                      }
-                    </Text>
-                  </View>
-                )}
-                
-                <ActivityIndicator size="large" color={colors.primary} style={styles.blockingSpinner} />
-              </>
-            ) : (
-              <>
-                <View style={styles.blockingIcon}>
-                  <Send size={48} color={colors.primary} />
-                </View>
-                <Text style={styles.blockingTitle}>Creating Prompt</Text>
-                <Text style={styles.blockingMessage}>
-                  Your prompt is being created and will be shared with the community shortly.
-                </Text>
-                <ActivityIndicator size="large" color={colors.primary} style={styles.blockingSpinner} />
-              </>
-            )}
+            <View style={styles.blockingIcon}>
+              <Send size={48} color={colors.primary} />
+            </View>
+            <Text style={styles.blockingTitle}>Creating Prompt</Text>
+            <Text style={styles.blockingMessage}>
+              Your prompt is being created and will be shared with the community shortly.
+            </Text>
+            <ActivityIndicator size="large" color={colors.primary} style={styles.blockingSpinner} />
           </Animated.View>
         </Animated.View>
       )}
@@ -1203,7 +1457,7 @@ export default function CreatePostScreen() {
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            scrollEnabled={!isBlocked}
+            scrollEnabled={!isSubmitting}
           >
             {/* AI Prompt Section */}
             <View style={styles.section}>
@@ -1218,7 +1472,7 @@ export default function CreatePostScreen() {
                 onChangeText={setPrompt}
                 multiline
                 textAlignVertical="top"
-                editable={!isBlocked}
+                editable={!isSubmitting}
               />
             </View>
 
@@ -1238,11 +1492,11 @@ export default function CreatePostScreen() {
                         isSelected && styles.aiSourceButtonActive,
                       ]}
                       onPress={() => setSelectedAiSource(source.id)}
-                      disabled={isBlocked}
+                      disabled={isSubmitting}
                     >
                       <View style={styles.aiSourceIcon}>
                         <IconComponent
-                          size={24}
+                          size={22}
                           color={isSelected ? colors.primary : colors.textSecondary}
                         />
                       </View>
@@ -1268,7 +1522,7 @@ export default function CreatePostScreen() {
                         isSelected && styles.categoryButtonActive,
                       ]}
                       onPress={() => setSelectedCategory(category)}
-                      disabled={isBlocked}
+                      disabled={isSubmitting}
                     >
                       <Text
                         style={[
@@ -1296,12 +1550,12 @@ export default function CreatePostScreen() {
                   onChangeText={setTagInput}
                   onSubmitEditing={addTag}
                   returnKeyType="done"
-                  editable={!isBlocked}
+                  editable={!isSubmitting}
                 />
                 <TouchableOpacity
                   style={styles.addButton}
                   onPress={addTag}
-                  disabled={!tagInput.trim() || tags.length >= 5 || isBlocked}
+                  disabled={!tagInput.trim() || tags.length >= 5 || isSubmitting}
                 >
                   <Text style={styles.addButtonText}>Add</Text>
                 </TouchableOpacity>
@@ -1315,7 +1569,7 @@ export default function CreatePostScreen() {
                       <TouchableOpacity
                         style={styles.removeTagButton}
                         onPress={() => removeTag(tag)}
-                        disabled={isBlocked}
+                        disabled={isSubmitting}
                       >
                         <X size={12} color={colors.textSecondary} />
                       </TouchableOpacity>
@@ -1333,41 +1587,84 @@ export default function CreatePostScreen() {
               </Text>
               
               {/* Image Upload Options */}
-              <View style={styles.imageUploadContainer}>
+              <View 
+                style={styles.imageUploadContainer}
+                {...(Platform.OS === 'web' && {
+                  onDragOver: handleDragOver,
+                  onDragLeave: handleDragLeave,
+                  onDrop: handleDrop,
+                })}
+              >
+                {Platform.OS === 'web' && isDragOver && (
+                  <View style={[styles.dragOverlay, { backgroundColor: colors.success + '20' }]}>
+                    <Upload size={48} color={colors.success} />
+                    <Text style={[styles.dragOverlayText, { color: colors.success }]}>
+                      Drop images here to upload
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.imageUploadButtons}>
-                  <TouchableOpacity
-                    style={[
-                      styles.imageUploadButton,
-                      uploadingImages && styles.imageUploadButtonActive,
-                    ]}
-                    onPress={pickImage}
-                    disabled={isBlocked || totalImages >= 5}
-                  >
-                    <View style={styles.imageUploadIcon}>
-                      <Upload size={24} color={colors.primary} />
-                    </View>
-                    <Text style={styles.imageUploadText}>Upload Images</Text>
-                    <Text style={styles.imageUploadSubtext}>
-                      JPG, PNG, GIF, WebP
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[
-                      styles.imageUploadButton,
-                      uploadingImages && styles.imageUploadButtonActive,
-                    ]}
-                    onPress={takePhoto}
-                    disabled={isBlocked || totalImages >= 5}
-                  >
-                    <View style={styles.imageUploadIcon}>
-                      <Camera size={24} color={colors.primary} />
-                    </View>
-                    <Text style={styles.imageUploadText}>Take Photo</Text>
-                    <Text style={styles.imageUploadSubtext}>
-                      Use camera
-                    </Text>
-                  </TouchableOpacity>
+                  {Platform.OS === 'web' ? (
+                    <>
+                      <TouchableOpacity
+                        style={styles.imageUploadButton}
+                        onPress={pickImageFromBrowser}
+                        disabled={isSubmitting || totalImages >= 5}
+                      >
+                        <View style={styles.imageUploadIcon}>
+                          <FolderOpen size={24} color={colors.primary} />
+                        </View>
+                        <Text style={styles.imageUploadText}>Choose from Computer</Text>
+                        <Text style={styles.imageUploadSubtext}>
+                          JPG, PNG, GIF, WebP
+                        </Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        style={styles.imageUploadButton}
+                        onPress={pickImage}
+                        disabled={isSubmitting || totalImages >= 5}
+                      >
+                        <View style={styles.imageUploadIcon}>
+                          <Upload size={24} color={colors.primary} />
+                        </View>
+                        <Text style={styles.imageUploadText}>Upload Images</Text>
+                        <Text style={styles.imageUploadSubtext}>
+                          Alternative method
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={styles.imageUploadButton}
+                        onPress={pickImage}
+                        disabled={isSubmitting || totalImages >= 5}
+                      >
+                        <View style={styles.imageUploadIcon}>
+                          <Upload size={24} color={colors.primary} />
+                        </View>
+                        <Text style={styles.imageUploadText}>Upload Images</Text>
+                        <Text style={styles.imageUploadSubtext}>
+                          JPG, PNG, GIF, WebP
+                        </Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        style={styles.imageUploadButton}
+                        onPress={takePhoto}
+                        disabled={isSubmitting || totalImages >= 5}
+                      >
+                        <View style={styles.imageUploadIcon}>
+                          <Camera size={24} color={colors.primary} />
+                        </View>
+                        <Text style={styles.imageUploadText}>Take Photo</Text>
+                        <Text style={styles.imageUploadSubtext}>
+                          Use camera
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
 
                 {/* Image URL Input */}
@@ -1382,12 +1679,15 @@ export default function CreatePostScreen() {
                     returnKeyType="done"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    editable={!isBlocked}
+                    contextMenuHidden={false}
+                    textContentType="none"
+                    keyboardType="default"
+                    editable={!isSubmitting}
                   />
                   <TouchableOpacity
                     style={styles.addButton}
                     onPress={addImageUrl}
-                    disabled={!imageUrlInput.trim() || totalImages >= 5 || isBlocked}
+                    disabled={!imageUrlInput.trim() || totalImages >= 5 || isSubmitting}
                   >
                     <Text style={styles.addButtonText}>Add</Text>
                   </TouchableOpacity>
@@ -1430,7 +1730,7 @@ export default function CreatePostScreen() {
                       <TouchableOpacity
                         style={styles.removeImageButton}
                         onPress={() => removeUploadedImage(image.id)}
-                        disabled={image.uploading || isBlocked}
+                        disabled={image.uploading || isSubmitting}
                       >
                         <X size={16} color={colors.error} />
                       </TouchableOpacity>
@@ -1457,7 +1757,7 @@ export default function CreatePostScreen() {
                       <TouchableOpacity
                         style={styles.removeImageButton}
                         onPress={() => removeImageUrl(imageUrl)}
-                        disabled={isBlocked}
+                        disabled={isSubmitting}
                       >
                         <X size={16} color={colors.error} />
                       </TouchableOpacity>
@@ -1476,31 +1776,31 @@ export default function CreatePostScreen() {
               <TouchableOpacity
                 style={[
                   styles.submitButton,
-                  (!isFormValid() || isBlocked || hasUploadingImages) && styles.submitButtonDisabled,
+                  (!isFormValid() || isSubmitting || hasUploadingImages) && styles.submitButtonDisabled,
                 ]}
                 onPress={handleSubmit}
-                disabled={!isFormValid() || isBlocked || hasUploadingImages}
+                disabled={!isFormValid() || isSubmitting || hasUploadingImages}
               >
                 <View style={styles.submitButtonContent}>
                   {isSubmitting ? (
                     <ActivityIndicator size="small" color={colors.white} />
                   ) : (
-                    <Send size={20} color={isFormValid() && !isBlocked ? colors.white : colors.textSecondary} />
+                    <Send size={20} color={isFormValid() && !isSubmitting && !hasUploadingImages ? colors.white : colors.textSecondary} />
                   )}
                   <Text
                     style={[
                       styles.submitButtonText,
-                      (!isFormValid() || isBlocked || hasUploadingImages) && styles.submitButtonTextDisabled,
+                      (!isFormValid() || isSubmitting || hasUploadingImages) && styles.submitButtonTextDisabled,
                     ]}
                   >
-                    {isSubmitting ? 'Creating...' : 'Create Prompt'}
+                    {hasUploadingImages ? 'Uploading Images...' : (isSubmitting ? 'Creating...' : 'Create Prompt')}
                   </Text>
                 </View>
               </TouchableOpacity>
             </Animated.View>
 
             {/* Error Feedback */}
-            {submitError && !isBlocked && (
+            {submitError && !isSubmitting && (
               <View style={[styles.feedbackContainer, styles.errorContainer]}>
                 <View style={styles.feedbackIcon}>
                   <AlertCircle size={20} color={colors.error} />
